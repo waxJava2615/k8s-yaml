@@ -1,0 +1,4 @@
+kubectl get secret -n devops gitlab-wax-initial-root-password -oyaml | awk /password:/{'print $2'}  | base64 -d
+
+
+

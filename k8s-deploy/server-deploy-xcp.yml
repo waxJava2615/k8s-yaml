@@ -1,0 +1,105 @@
+---
+- name: 0.系统初始化
+  gather_facts: false
+  hosts: k8s
+  roles:
+    - sys-set
+  tags: sys_set
+
+- name: 1.自签证书
+  gather_facts: false
+  hosts: localhost
+  roles:
+    - tls
+  tags: tls
+
+- name: 2.etcd集群
+  gather_facts: false
+  hosts: xcp-etcd
+  roles:
+    - etcd
+  tags: etcd_cluster
+
+- name: 3.安转docker
+  gather_facts: false
+  hosts: k8s
+  roles:
+    - docker
+  tags: docker
+
+- name: 4. 部署Nginx负载均衡并高可用
+  gather_facts: false
+  hosts: lb
+  roles:
+    - ha
+  tags: ha
+
+# ansible-playbook -i hosts server-deploy-xcp.yml --tags sys_set,tls,etcd_cluster,docker,ha -vv
+
+- name: 5.K8S集群master
+  gather_facts: false
+  hosts: xcp-master
+  become_user: root
+  roles:
+    - k8s-master
+  tags: k8s_cluster_master
+
+
+- name: 6.K8S集node
+  gather_facts: false
+  hosts: xcp-node
+  roles:
+    - k8s-node
+  tags: k8s_cluster_node
+
+# ansible-playbook -i hosts server-deploy-xcp.yml --tags k8s_cluster_master,k8s_cluster_node -vv
+- name: calico安转
+  gather_facts: false
+  become_user: root
+  hosts: xcp-master
+  roles:
+    - calico
+  tags: calico
+
+- name: coreDns安装
+  gather_facts: false
+  become_user: root
+  hosts: xcp-master
+  roles:
+    - coredns
+  tags: coredns
+
+# ansible-playbook -i hosts server-deploy-xcp.yml --tags calico,coredns -vv
+
+- name: ingress-nginx安装
+  gather_facts: false
+  become_user: root
+  hosts: xcp-master
+  roles:
+    - ingress-nginx
+  tags: ingress-nginx
+
+- name: 插件安装
+  gather_facts: false
+  become_user: root
+  hosts: xcp-master
+  roles:
+    - addons
+  tags: addons
+
+- name: 安装dashboard
+  gather_facts: false
+  become_user: root
+  hosts: xcp-master
+  roles:
+    - dashboard
+  tags: dashboard
+
+- name: 安装helm v3版
+  gather_facts: false
+  become_user: root
+  hosts: xcp-master
+  roles:
+    - helm3
+  tags: helm3
+# ansible-playbook -i hosts server-deploy-xcp.yml --tags ingress-nginx,addons,dashboard,helm3 -vv

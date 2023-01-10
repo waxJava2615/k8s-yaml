@@ -1,0 +1,118 @@
+- name: 安装cephfs-cluster
+  gather_facts: false
+  become_user: root
+  hosts: cephfs-cluster
+  roles:
+    - cephfs-cluster
+  tags: cephfs-cluster
+
+- name:  安装cephfs-node
+  gather_facts: false
+  become_user: root
+  hosts: cephfs-node
+  roles:
+    - cephfs-node
+  tags: cephfs-node
+
+- name:  安装cephfs-mon-mgr
+  gather_facts: false
+  become_user: root
+  hosts: cephfs-cluster
+  roles:
+    - cephfs-mon-mgr
+  tags: cephfs-mon-mgr
+
+#  ansible-playbook -i hosts server-deploy-xcp.yml --tags cephfs-cluster,cephfs-node,cephfs-mon-mgr -vv
+
+- name:  挂载文件目录
+  gather_facts: false
+  become_user: root
+  hosts: cephfs-node
+  roles:
+    - cephfs-mount
+  tags: cephfs-mount
+
+#  ansible-playbook -i hosts server-deploy-xcp.yml --tags cephfs-mount -vv
+
+- name: ceph-csi
+  gather_facts: false
+  become_user: root
+  hosts: xcp-master
+  roles:
+    - ceph-csi
+  tags: ceph-csi
+
+#  ansible-playbook -i hosts server-deploy-xcp.yml --tags ceph-csi -vv
+
+- name: 安装 prometheus 监控
+  gather_facts: false
+  hosts: xcp-master
+  roles:
+    - prometheus
+  tags: prometheus
+
+# ansible-playbook -i hosts server-deploy-xcp.yml --tags prometheus -vv
+
+#- name: jenkins安装
+#  gather_facts: false
+#  hosts: jenkins
+#  roles:
+#    - jenkins
+#  tags: jenkins
+
+# ansible-playbook -i hosts server-deploy-xcp.yml --tags jenkins -vv
+
+- name: 安装singleton-redis
+  gather_facts: false
+  hosts: xcp-master
+  roles:
+    - singleton-redis
+  tags: singleton-redis
+
+# ansible-playbook -i hosts server-deploy-xcp.yml --tags singleton-redis -vv
+
+- name: 安装singleton-postgresql
+  gather_facts: false
+  hosts: xcp-master
+  roles:
+    - singleton-postgresql
+  tags: singleton-postgresql
+
+# ansible-playbook -i hosts server-deploy-xcp.yml --tags singleton-postgresql -vv
+
+- name: 安装 安装singleton-gitlab
+  gather_facts: false
+  hosts: xcp-master
+  roles:
+    - singleton-gitlab
+  tags: singleton-gitlab
+
+# ansible-playbook -i hosts server-deploy-xcp.yml --tags singleton-gitlab -vv
+
+
+- name: k8s-jenkins安装
+  gather_facts: false
+  hosts: xcp-master
+  roles:
+    - k8s-jenkins
+  tags: k8s-jenkins
+# ansible-playbook -i hosts server-deploy-xcp.yml --tags jenkins-down,jenkins-env,jenkins-dev,jenkins-install -vv
+#  ansible-playbook -i hosts server-deploy-xcp.yml --tags k8s-jenkins -vv
+
+
+- name: harbor安装
+  gather_facts: false
+  hosts: xcp-master
+  roles:
+    - harbor
+  tags: harbor
+#  ansible-playbook -i hosts server-deploy-xcp.yml --tags harbor -vv
+
+
+- name: nexus
+  gather_facts: false
+  hosts: xcp-master
+  roles:
+    - nexus
+  tags: nexus
+#  ansible-playbook -i hosts server-deploy-xcp.yml --tags nexus -vv

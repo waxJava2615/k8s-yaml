@@ -1,0 +1,15 @@
+[cephfs-cluster]
+192.168.0.211  node_name=k8s-master-1
+
+[cephfs-node]
+192.168.0.211  node_name=k8s-master-1
+192.168.0.212  node_name=k8s-master-2
+192.168.0.213  node_name=k8s-node-2
+
+
+[xcp-master]
+192.168.0.211  node_name=k8s-master-1
+192.168.0.212  node_name=k8s-master-2
+
+[jenkins]
+192.168.0.213  node_name=k8s-node-2

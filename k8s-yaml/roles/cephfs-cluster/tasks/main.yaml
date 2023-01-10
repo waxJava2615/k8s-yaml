@@ -1,0 +1,24 @@
+---
+# 前提能免密登录到对应的节点上
+- name: 安装依赖
+  yum:
+    name:
+      - python-setuptools
+      - ceph
+      - ceph-radosgw
+    state: present
+  ignore_errors: yes
+
+- name: 分发ceph源配置文件
+  copy: src=ceph.repo dest=/etc/yum.repos.d/ceph.repo
+
+- name: 构建缓存
+  shell: |
+    yum makecache
+    
+
+- name: 安装ceph-deploy
+  yum:
+    name:
+      - ceph-deploy
+    state: present

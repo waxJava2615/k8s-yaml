@@ -1,0 +1,26 @@
+---
+
+- name: 创建ceph-rbd动态pv的目录
+  file: src={{k8s_work_dir}}/yml/ceph-rbd state=directory
+  tags: ceph-rbd
+
+- name: 分发配置文件
+  copy: src={{item}} dest=src={{k8s_work_dir}}/yml/ceph-rbd
+  with_fileglob:
+    - "*.yaml"
+  tags: ceph-rbd
+
+- name: 将配置文件应用至k8s
+  shell: |
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-rbd/ceph_rbd.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-rbd/test_ceph.yaml
+  run_once: yes
+  tags: ceph-rbd,init_nginx_test_pvc
+
+
+- name: 从k8s中卸载配置文件
+  shell: |
+    /usr/bin/kubectl delete -f {{k8s_work_dir}}/yml/ceph-rbd/test_ceph.yaml
+    /usr/bin/kubectl delete -f {{k8s_work_dir}}/yml/ceph-rbd/ceph_rbd.yaml
+  run_once: yes
+  tags: del_nginx_test_pvc

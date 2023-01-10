@@ -1,0 +1,31 @@
+---
+#- name: 允许Node加入集群
+#  ignore_errors: yes
+#  shell: kubectl certificate approve $(kubectl get csr |awk 'NR!=1{print $1}')
+
+- name: 创建coredns文件存储
+  file: name={{ item }} state=directory
+  with_items:
+    - /opt/kubernetes/yml/coredns
+
+- name: 拷贝YAML文件到Master
+  copy: src={{ item }} dest=/opt/kubernetes/yml/coredns
+  with_fileglob:
+    - "*.yaml"
+
+
+- name: 部署CoreDNS
+  shell: |
+    /usr/bin/kubectl apply -f /opt/kubernetes/yml/coredns/coredns.yaml
+  run_once: true
+
+#- name: 修复bug--> plugin/ready Still waiting on "kubernetes"
+#  shell: |
+#    /usr/bin/kubectl edit clusterrole system:coredns
+#  run_once: true
+
+- name: 查看Pod状态
+  shell: kubectl get all --all-namespaces
+  register: getall
+- debug: var=getall.stdout_lines
+

@@ -1,0 +1,20 @@
+- name: 创建插件目录
+  file: name={{ item }} state=directory
+  with_items:
+    - /opt/kubernetes/yml/addons/metrics-server
+  tags: update_addons
+
+- name: 分发yaml文件
+  template: src=metrics-server/components.yaml.j2 dest={{ k8s_work_dir }}/yml/addons/metrics-server/metrics-server.yaml
+  tags: addons_metrics_server
+
+- name: 删除 metrics-server部署
+  shell: "/usr/bin/kubectl delete -f /opt/kubernetes/yml/addons/metrics-server/metrics-server.yaml"
+  run_once: true
+  ignore_errors: true
+  tags: addons_metrics_server
+
+- name: 创建 metrics-server部署
+  shell: "/usr/bin/kubectl apply -f /opt/kubernetes/yml/addons/metrics-server/metrics-server.yaml"
+  run_once: true
+  tags: addons_metrics_server

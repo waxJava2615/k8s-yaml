@@ -1,0 +1,19 @@
+---
+- name: 创建目录
+  file: name={{ tmp_dir }} state=directory
+
+- name: 解压helm文件包
+  unarchive: src={{ software_dir }}/helm-v3.5.4-linux-amd64.tar.gz dest={{ tmp_dir }}
+
+
+- name: 移动helm到/usr/local/bin下
+  shell: |
+    mv {{ tmp_dir }}/linux-amd64/helm /usr/local/bin/helm
+    
+- name: 添加微软源
+  shell: |
+    helm repo add stable http://mirror.azure.cn/kubernetes/charts
+    helm repo update
+
+
+

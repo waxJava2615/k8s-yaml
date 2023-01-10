@@ -1,0 +1,65 @@
+---
+- name: ha---创建临时目录
+  file: dest={{ tmp_dir }} state=directory
+
+- name: ha---拷贝nginx,keepalived安装包
+  unarchive: src={{ software_dir }}/ha.tar.gz dest={{ tmp_dir }}
+
+- name: ha---安装keepalived高可用软件
+  yum: name={{ tmp_dir }}/{{ item }} state=present
+  with_items:
+    - "net-snmp-libs-5.7.2-43.el7.x86_64.rpm"
+    - "net-snmp-agent-libs-5.7.2-43.el7.x86_64.rpm"
+    - "keepalived-1.3.5-16.el7.x86_64.rpm"
+
+- name: ha---卸载yum安装的nginx
+  yum:
+    name:
+      - nginx
+    state: absent
+
+- name: ha---安装nginx负载均衡器
+  yum: name={{ tmp_dir }}/nginx-1.16.1-1.el7.ngx.x86_64.rpm state=present
+
+- name: ha---拷贝nginx配置文件
+  template: src=nginx.conf.j2 dest=/etc/nginx/nginx.conf
+
+- name: ha---拷贝keepalived配置文件
+  template: src=keepalived.conf.j2 dest=/etc/keepalived/keepalived.conf
+
+- name: ha---拷贝nginx健康检查脚本
+  copy: src=check_nginx.sh dest=/etc/keepalived/ mode=0755
+
+
+- name: ha---查看nginx是否启动
+  ansible.builtin.systemd:
+    name: nginx
+  register: check_nginx_status
+  tags: check_nginx_status
+- debug: var=check_nginx_status.status.ActiveState
+  tags: check_nginx_status
+
+- name: ha---查看keepalived是否启动
+  ansible.builtin.systemd:
+    name: keepalived
+  register: check_keepalived_status
+  tags: check_keepalived_status
+- debug: var=check_keepalived_status.status.ActiveState
+  tags: check_keepalived_status
+
+- name: ha---启动nginx
+  systemd: name=nginx state=started enabled=yes daemon_reload=yes
+  when: check_nginx_status.status.ActiveState == 'inactive' or check_nginx_status.status.ActiveState == 'failed'
+
+- name: ha---重启nginx
+  systemd: name=nginx state=restarted enabled=yes daemon_reload=yes
+  when: check_nginx_status.status.ActiveState == 'active'
+
+
+- name: ha---启动keepalived
+  systemd: name=keepalived state=started enabled=yes daemon_reload=yes
+  when: check_keepalived_status.status.ActiveState == 'inactive' or check_keepalived_status.status.ActiveState == 'failed'
+
+- name: ha---重启keepalived
+  systemd: name=keepalived state=restarted enabled=yes daemon_reload=yes
+  when: check_keepalived_status.status.ActiveState == 'active'

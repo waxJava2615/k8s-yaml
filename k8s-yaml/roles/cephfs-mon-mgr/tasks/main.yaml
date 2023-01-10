@@ -1,0 +1,184 @@
+- name: 创建目录,后续命令均在此执行，避免覆盖原有集群
+  file: dest=/data/ceph-cmd-cluster state=directory
+
+# delete
+# ceph-deploy mon destroy k8s-node-1 k8s-node-2 k8s-node-3
+- name: 创建集群
+  shell: |
+    cd /data/ceph-cmd-cluster
+    ceph-deploy new k8s-master-1 k8s-master-2 k8s-node-2
+  register: ceph_deploy_status
+- debug: var=ceph_deploy_status
+
+- name: 初始化集群
+  shell: |
+    cd /data/ceph-cmd-cluster
+    ceph-deploy mon create-initial
+    sleep 30
+  tags: ceph_deploy_init
+
+- name: 生成秘钥以及同步配置
+  shell: |
+    cd /data/ceph-cmd-cluster
+    ceph-deploy admin k8s-master-1 k8s-master-2 k8s-node-2
+  tags: mon-mgr-create
+
+
+- name: 修改配置文件 -- monitor间的时钟滴答数(默认0.5秒)
+  lineinfile:
+    path: /data/ceph-cmd-cluster/ceph.conf
+    regexp: "^mon_clock_drift_allowed"
+    line: "mon_clock_drift_allowed=2"
+  tags: mon-mgr-conf
+
+- name: 修改配置文件 --大时钟允许的偏移量(默认为5)
+  lineinfile:
+    path: /data/ceph-cmd-cluster/ceph.conf
+    regexp: "^mon_clock_drift_warn_backoff"
+    line: "mon_clock_drift_warn_backoff=30"
+  tags: mon-mgr-conf
+
+- name: 修改配置文件 --mon_allow_pool_delete
+  lineinfile:
+    path: /data/ceph-cmd-cluster/ceph.conf
+    regexp: "^mon_allow_pool_delete"
+    line: "mon_allow_pool_delete=true"
+  tags: mon-mgr-conf
+
+#- name: 修改配置文件 -- public_network
+#  lineinfile:
+#    path: /data/ceph-cmd-cluster/ceph.conf
+#    regexp: "^public_network"
+#    line: "public_network=192.168.0.0"
+
+
+#  mons are allowing insecure global_id reclaim
+# 禁用不安全模式 config set mon auth_allow_insecure_global_id_reclaim false
+- name: 重启服务
+  shell: |
+    systemctl restart ceph-mon.target
+    sleep 5
+    cd /data/ceph-cmd-cluster
+    ceph config set mon auth_allow_insecure_global_id_reclaim false
+  tags: mon-mgr-conf
+
+- name: 重置配置文件
+  shell: |
+    cd /data/ceph-cmd-cluster
+    ceph-deploy --overwrite-conf admin k8s-master-1 k8s-master-2 k8s-node-2
+  tags: mon-mgr-conf
+    
+
+# 删除osd
+# 查看osd
+#  ceph osd tree
+# 命令里的@0 表示某个osd  0--》数字  需要到对应的节点执行停止命令
+#  systemctl stop  ceph-osd@0
+#- 下线osd。执行
+#  ceph osd out 0
+#- 将osd.0踢出集群，执行
+#  ceph osd crush remove osd.0
+#- 删除成功但是原来的数据和日志目录还在
+#  ceph auth del osd.0
+  #  ceph osd rm 0
+# 格式化命令
+# ceph-deploy disk zap node-1 /dev/sdb
+# wipefs: error: /dev/sdb: probing initialization failed: Device or resource busy 无法格式化
+# 手动执行  dd if=/dev/zero of=/dev/sdb bs=512K count=1
+# reboot
+
+#  报daemons have recently crashed
+#  ceph crash ls-new
+#
+#  ceph crash info <crash-id>
+#
+#  ceph crash archive <crash-id>
+#
+#  ceph crash archive-all
+
+- name:
+  shell: |
+    cd /data/ceph-cmd-cluster
+    ceph-deploy mgr create k8s-master-1 k8s-master-2 k8s-node-2
+    sleep 60
+  tags: mon-mgr-create-mgr
+
+
+- name: 格式化磁盘
+  shell: |
+    cd /data/ceph-cmd-cluster
+    ceph-deploy disk zap k8s-master-1 /dev/sdb
+    ceph-deploy disk zap k8s-master-2 /dev/sdb
+    ceph-deploy disk zap k8s-node-2 /dev/sdb
+  tags: ceph-osd-fmt
+
+
+- name: 添加osd
+  shell: |
+    cd /data/ceph-cmd-cluster
+    ceph-deploy osd create --data /dev/sdb k8s-master-1
+    ceph-deploy osd create --data /dev/sdb k8s-master-2
+    ceph-deploy osd create --data /dev/sdb k8s-node-2
+    sleep 5
+  tags: ceph-osd-create
+
+- name: 查看集群状态
+  shell: |
+    cd /data/ceph-cmd-cluster
+    ceph config set mon auth_allow_insecure_global_id_reclaim false
+    ceph -s
+  register: cluster_status
+  tags: ceph-cluster-status
+- debug: var=cluster_status
+  tags: ceph-cluster-status
+
+- name: 创建块存储rbd
+  shell:
+    chdir: /data/ceph-cmd-cluster
+    cmd: "ceph osd pool create rbd 32 32"
+  ignore_errors: yes
+  tags: block_rbd
+
+- name: 初始化块存储rbd
+  shell:
+    chdir: /data/ceph-cmd-cluster
+    cmd: "ceph osd pool application enable rbd rbd"
+  ignore_errors: yes
+  tags: block_rbd
+
+- name: 创建块存储空间大小  单位是-->Megabytes
+  shell:
+    chdir: /data/ceph-cmd-cluster
+    cmd: "rbd create --size 1024 image01 && rbd feature disable image01 object-map fast-diff deep-flatten"
+  ignore_errors: yes
+  tags: block_rbd
+
+
+- name: 部署MDS
+  shell: |
+    cd /data/ceph-cmd-cluster
+    ceph-deploy  mds create k8s-master-1 k8s-master-2 k8s-node-2
+  tags: mds-create
+
+- name: 生成admin.key
+  shell: |
+    cd /data/ceph-cmd-cluster
+    ceph auth print-key client.admin > admin.key
+  tags: mds-create
+
+- name: 分发admin.key
+  shell: |
+    cd /data/ceph-cmd-cluster
+    scp admin.key root@k8s-master-1:/etc/ceph/
+    scp admin.key root@k8s-master-2:/etc/ceph/
+    scp admin.key root@k8s-node-2:/etc/ceph/
+  tags: mds-create
+
+- name: 创建fs
+  shell: |
+    cd /data/ceph-cmd-cluster
+    ceph osd pool create kubernetes 16 16
+    ceph osd pool create cephfs_data 16 16
+    ceph osd pool create cephfs_metadata 8 8
+    ceph fs new mycephfs cephfs_data cephfs_metadata
+  tags: cephfs-create_op

@@ -1,0 +1,164 @@
+# https://plugins.jenkins.io/kubernetes/
+
+---
+- name: 添加helm的 jenkins 仓库
+  shell:
+    cmd: "helm repo add jenkins https://charts.jenkins.io"
+    chdir: "{{helm_download_dir}}"
+  ignore_errors: yes
+  tags: jenkins-down
+
+- name: 下载 jenkins 镜像 4.1.17==>2.346.3
+  shell:
+    cmd: "helm pull jenkins/jenkins --version 4.1.17"
+    chdir: "{{helm_download_dir}}"
+  ignore_errors: yes
+  tags: jenkins-down
+
+- name: 解压gitlab镜像
+#  shell:
+#    cmd: "tar -zxvf gitlab-6.2.2.tgz"
+#    chdir: "{{helm_download_dir}}"
+  unarchive: src={{helm_download_dir}}/jenkins-4.1.17.tgz dest={{helm_download_dir}} copy=no mode=0777
+  ignore_errors: yes
+  tags: jenkins-down
+
+- name: 创建yaml存储
+  file:
+    path: "{{k8s_work_dir}}/yml/{{item}}"
+    state: directory
+    mode: "0777"
+  with_items:
+    - k8s-jenkins
+    - k8s-jenkins/sc
+    - k8s-jenkins/tls
+    - k8s-jenkins/pvc
+  tags: jenkins-env,jenkins-mvn,jk-mvn-pvc
+
+- name: 分发sc-yaml配置文件
+  copy:
+    src: "{{item}}"
+    dest: "{{k8s_work_dir}}/yml/k8s-jenkins/sc"
+    mode: "0777"
+  with_fileglob:
+    - "sc/*"
+  tags: jenkins-env
+
+- name: 分发tls配置
+  copy:
+    src: "{{item}}"
+    dest: "{{k8s_work_dir}}/yml/k8s-jenkins/tls"
+    mode: "0777"
+  with_fileglob:
+    - "tls/*"
+  tags: jenkins-env
+
+- name: 分发 jenkins helm 的配置
+  copy:
+    src: "helm/values.yaml"
+    dest: "{{helm_download_dir}}/jenkins"
+    mode: "0777"
+  tags: jenkins-env,jenkins-install,jenkins-update
+
+- name: 分发pvc配置
+  copy:
+    src: "{{item}}"
+    dest: "{{k8s_work_dir}}/yml/k8s-jenkins/pvc"
+    mode: "0777"
+  with_fileglob:
+    - "pvc/*"
+  tags: jenkins-env,jk-mvn-pvc
+
+- name: 删除动态sc
+  run_once: yes
+  ignore_errors: yes
+  shell:
+    cmd: "/usr/bin/kubectl delete -f devops-jenkins-sc.yaml"
+    chdir: "{{k8s_work_dir}}/yml/k8s-jenkins/sc"
+  tags: jenkins-dev
+
+
+- name: 创建动态sc
+  run_once: yes
+  shell:
+    cmd: "/usr/bin/kubectl apply -f devops-jenkins-sc.yaml"
+    chdir: "{{k8s_work_dir}}/yml/k8s-jenkins/sc"
+  tags: jenkins-dev
+
+- name: 删除PVC mvn
+  run_once: yes
+  ignore_errors: yes
+  shell:
+    cmd: "/usr/bin/kubectl delete -f jenkins-mvn-pvc.yaml"
+    chdir: "{{k8s_work_dir}}/yml/k8s-jenkins/pvc"
+  tags: jenkins-dev,jk-mvn-pvc
+
+- name: 创建pvc mvn
+  run_once: yes
+  shell:
+    cmd: "/usr/bin/kubectl apply -f jenkins-mvn-pvc.yaml"
+    chdir: "{{k8s_work_dir}}/yml/k8s-jenkins/pvc"
+  tags: jenkins-dev,jk-mvn-pvc
+
+- name: 删除tls
+  run_once: yes
+  ignore_errors: yes
+  shell:
+    cmd: "/usr/bin/kubectl delete secret tls-jenkins -n devops"
+    chdir: "{{k8s_work_dir}}/yml/k8s-jenkins/tls"
+  tags: jenkins-dev
+
+- name: 创建tls
+  run_once: yes
+  shell:
+    cmd: "/usr/bin/kubectl create secret tls tls-jenkins --cert=jenkins.wax.com.crt --key=jenkins.wax.com.key -n devops"
+    chdir: "{{k8s_work_dir}}/yml/k8s-jenkins/tls"
+  tags: jenkins-dev
+
+- name: 设置node标签
+  shell:
+    cmd: "/usr/bin/kubectl label nodes k8s-node-1 jenkins.io/deploy=true"
+  run_once: true
+  ignore_errors: yes
+  tags: jenkins-dev
+
+- name: 使用helm执行安装jenkins
+  shell:
+    cmd: "sleep 10 && /usr/local/bin/helm install -n devops jenkins . --debug"
+    chdir: "{{helm_download_dir}}/jenkins"
+  run_once: yes
+  tags: jenkins-install
+
+- name: 更新jenkins
+  shell:
+    cmd: "sleep 10 && /usr/local/bin/helm upgrade -n devops jenkins . --debug"
+    chdir: "{{helm_download_dir}}/jenkins"
+  run_once: true
+  tags: jenkins-update
+
+# 使用jenkins的 Managed files 如果管理界面没有该选项，安装Config File Provider插件。
+#- name: maven配置文件分发
+#  copy:
+#    src: "{{item}}"
+#    dest: "{{k8s_work_dir}}/yml/k8s-jenkins/maven"
+#    mode: "0777"
+#  with_fileglob:
+#    - "maven/*"
+#  ignore_errors: yes
+#  tags: jenkins-mvn
+#
+#- name: maven配置文件删除
+#  shell:
+#    cmd: "/usr/bin/kubectl delete cm mvn-settings -n devops"
+#    chdir: "{{k8s_work_dir}}/yml/k8s-jenkins/maven"
+#  run_once: true
+#  ignore_errors: yes
+#  tags: jenkins-mvn
+#
+#- name: maven配置文件部署
+#  shell:
+#    cmd: "/usr/bin/kubectl create configmap mvn-settings --from-file=setting.xml -n devops"
+#    chdir: "{{k8s_work_dir}}/yml/k8s-jenkins/maven"
+#  run_once: true
+#  tags: jenkins-mvn
+

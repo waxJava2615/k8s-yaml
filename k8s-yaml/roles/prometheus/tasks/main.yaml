@@ -1,0 +1,190 @@
+# git clone -b v0.11.0 https://github.com/prometheus-operator/kube-prometheus.git kube-prometheus-v0.11.0
+
+---
+- name: 创建命名空间monitoring
+  shell: |
+    /usr/bin/kubectl create ns monitoring
+  ignore_errors: yes
+  run_once: yes
+  tags: prome_blackbox
+
+- name: prometheus---创建文件存放目录
+  file: path={{ k8s_work_dir }}/yml/prometheus/{{ item }} state=directory recurse=yes
+  with_items:
+    - manifests
+    - manifests/setup
+  tags: promotheus_init
+
+- name: prometheus---分发Operator配置
+  copy:
+    src: "{{item}}"
+    dest: "{{k8s_work_dir}}/yml/prometheus/manifests/setup"
+    mode: 0777
+  with_fileglob:
+    - manifests/setup/*.yaml
+  tags: promotheus_init
+
+- name: prometheus---分发配置文件
+  copy:
+    src: "{{item}}"
+    dest: "{{ k8s_work_dir }}/yml/prometheus/manifests"
+    mode: 0777
+  with_fileglob:
+    - manifests/*.yaml
+  tags: promotheus_init
+
+- name: prometheus---分发svc和ingress配置
+  copy:
+    src: "{{item}}"
+    dest: "{{ k8s_work_dir }}/yml/prometheus"
+  with_fileglob:
+    - "*.yaml"
+  tags: promotheus_init,prometheus_install_ing,prometheus_install_warn
+
+
+- name: prometheus---Operator安装
+  shell:
+    cmd: "/usr/bin/kubectl apply --server-side -f ."
+    chdir: "{{k8s_work_dir}}/yml/prometheus/manifests/setup"
+  run_once: yes
+  tags: prometheus_install,prometheus_install_op
+
+- name: blackbox测试---创建配置文件存储
+  file:
+    path: "{{k8s_work_dir}}/yml/prometheus/blackbox"
+    mode: "0777"
+    state: directory
+  ignore_errors: yes
+  tags: prome_blackbox
+
+- name: blackbox测试---删除k8s配置
+  shell:
+    cmd: "/usr/bin/kubectl -n monitoring delete secret additional-scrape-configs"
+    chdir: "{{k8s_work_dir}}/yml/prometheus/blackbox"
+  ignore_errors: yes
+  run_once: yes
+  tags: prome_blackbox
+
+- name: blackbox测试---分发配置文件
+  copy:
+    src: "blackbox/additional-scrape-configs.yaml"
+    dest: "{{k8s_work_dir}}/yml/prometheus/blackbox"
+    mode: "0755"
+  ignore_errors: yes
+  tags: prome_blackbox
+
+- name: blackbox测试---应用配置文件
+  shell:
+    cmd: "kubectl -n monitoring create secret generic additional-scrape-configs --from-file=additional-scrape-configs.yaml"
+    chdir: "{{k8s_work_dir}}/yml/prometheus/blackbox"
+  ignore_errors: yes
+  run_once: yes
+  tags: prome_blackbox
+
+- name: prometheus---安装监控
+  shell:
+    cmd: "/usr/bin/kubectl apply -f ."
+    chdir: "{{k8s_work_dir}}/yml/prometheus/manifests"
+  run_once: yes
+  tags: prometheus_install,prometheus_install_monitor
+
+- name: prometheus---ingress安装
+  shell:
+    cmd: "/usr/bin/kubectl apply -f prometheus-ingress.yaml"
+    chdir: "{{k8s_work_dir}}/yml/prometheus"
+  run_once: yes
+  tags: prometheus_install,prometheus_install_ing
+
+- name: 去除controller警告
+  shell:
+    cmd: "/usr/bin/kubectl apply -f contr-manager-down-svc-ep.yaml "
+    chdir: "{{k8s_work_dir}}/yml/prometheus"
+  run_once: yes
+  ignore_errors: yes
+  tags: prometheus_install,prometheus_install_warn
+
+- name: 去除scheduler警告
+  shell:
+    cmd: "/usr/bin/kubectl apply -f scheduler-down-svc-ep.yaml"
+    chdir: "{{k8s_work_dir}}/yml/prometheus"
+  run_once: yes
+  tags: prometheus_install,prometheus_install_warn
+
+
+- name: etcd---创建监控配置文件存储路径
+  file:
+    path: "{{k8s_work_dir}}/yml/prometheus/custom-etcd"
+    mode: "0777"
+    state: directory
+  tags: prome_etcd
+
+- name: etcd---分发监控配置文件
+  copy:
+    src: "{{ item }}"
+    dest: "{{k8s_work_dir}}/yml/prometheus/custom-etcd"
+    mode: "0777"
+  with_fileglob:
+    - "custom-etcd/*.yaml"
+  tags: prome_etcd
+
+
+- name: 挂载etcd证书
+  shell: |
+    /usr/bin/kubectl -n monitoring create secret generic etcd-certs --from-file=/opt/kubernetes/ssl/etcd/ca.pem  --from-file=/opt/kubernetes/ssl/etcd/etcd.pem  --from-file=/opt/kubernetes/ssl/etcd/etcd-key.pem
+  run_once: yes
+  ignore_errors: yes
+  tags: prome_etcd
+
+# kubectl edit prometheus k8s -n monitoring
+# 在replicas底下加上secret名称
+# secrets:
+#   - etcd-certs #添加secret名称
+
+- name: k8s添加monitorEtcd
+  shell: |
+    cd {{k8s_work_dir}}/yml/prometheus/custom-etcd
+    /usr/bin/kubectl apply -f etcd-metrics-svc-ep.yaml && /usr/bin/kubectl apply -f prometheus-serviceMonitorEtcd.yaml
+  run_once: yes
+  ignore_errors: yes
+  tags: prome_etcd
+
+- name: 手动修改配置文件
+  debug:
+    msg: "kubectl edit prometheus k8s -n monitoring 在replicas底下加上secret名称 secrets: - etcd-certs ，
+    也可以kubectl exec -it -n monitoring prometheus-k8s-0 /bin/sh 使用 ls /etc/prometheus/secrets/etcd-certs 查看文件是否存在,   在管理界面导入etcd_rev3.json"
+  run_once: yes
+  ignore_errors: yes
+  tags: prome_etcd
+
+
+- name: prome_ing监控
+  file:
+    path: "{{k8s_work_dir}}/yml/prometheus/custom-ing"
+    mode: "0777"
+    state: directory
+  ignore_errors: yes
+  tags: prome_ing
+
+- name: 卸载 prome_ing 监控服务
+  shell:
+    cmd: "/usr/bin/kubectl delete -f ing-metrics-svc-ep.yaml && /usr/bin/kubectl delete -f prometheus-serviceMonitorIng.yaml"
+    chdir: "{{k8s_work_dir}}/yml/prometheus/custom-ing"
+  run_once: yes
+  ignore_errors: yes
+  tags: prome_ing
+
+- name: 分发 prome_ing 监控服务文件
+  copy:
+    src: "{{ item }}"
+    dest: "{{k8s_work_dir}}/yml/prometheus/custom-ing"
+    mode: "0777"
+  with_fileglob:
+    - "custom-ing/*.yaml"
+  tags: prome_ing,prome_ing_conf
+# kubectl edit ClusterRole prometheus-k8s 查看是否有svc 和 ep的权限
+- name: 部署 prome_ing 监控服务
+  shell:
+    cmd: "/usr/bin/kubectl apply -f ing-metrics-svc-ep.yaml && /usr/bin/kubectl apply -f prometheus-serviceMonitorIng.yaml"
+    chdir: "{{k8s_work_dir}}/yml/prometheus/custom-ing"
+  run_once: yes
+  tags: prome_ing

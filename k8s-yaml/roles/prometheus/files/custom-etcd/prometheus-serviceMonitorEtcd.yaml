@@ -1,0 +1,26 @@
+# kubectl -n monitoring create secret generic etcd-certs --from-file=/opt/kubernetes/ssl/etcd/ca.pem  --from-file=/opt/kubernetes/ssl/etcd/etcd.pem  --from-file=/opt/kubernetes/ssl/etcd/etcd-key.pem
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    app.kubernetes.io/name: prometheus-etcd-metrics
+  name: prometheus-k8s-etcd
+  namespace: monitoring
+spec:
+#  jobLabel: app.kubernetes.io/name
+  endpoints:
+  - interval: 30s
+    port: etcd-https-metrics   #service中的spec.ports.name
+    scheme: https
+    tlsConfig:
+      caFile: /etc/prometheus/secrets/etcd-certs/ca.pem #证书位置/etc/prometheus/secrets,这个路径是默认的挂载路径
+      certFile: /etc/prometheus/secrets/etcd-certs/etcd.pem
+      keyFile: /etc/prometheus/secrets/etcd-certs/etcd-key.pem
+      insecureSkipVerify: true
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus-etcd-metrics   # 跟scv的lables保持一致
+  namespaceSelector:
+    matchNames:
+      - kube-system   # 跟svc所在namespace保持一致

@@ -1,0 +1,71 @@
+- name: 创建存储--nexus
+  file:
+    path: "{{k8s_work_dir}}/yml/{{item}}"
+    state: directory
+    mode: "0777"
+  with_items:
+    - nexus
+    - nexus/tls
+  tags: nexus-env
+
+- name: 分发文件--nexus
+  copy:
+    src: "{{item}}"
+    dest: "{{k8s_work_dir}}/yml/nexus"
+    mode: "0777"
+  with_fileglob:
+    - "nexus-deploy.yaml"
+  tags: nexus-env
+
+- name: 分发tls--nexus
+  copy:
+    src: "{{item}}"
+    dest: "{{k8s_work_dir}}/yml/nexus/tls"
+    mode: "0777"
+  with_fileglob:
+    - "tls/*"
+  tags: nexus-env
+
+- name: 删除node标签--nexus
+  run_once: yes
+  ignore_errors: yes
+  shell:
+    cmd: "/usr/bin/kubectl label nodes k8s-node-1 k8s-app-"
+  tags: nexus-env
+
+- name: 添加node标签--nexus
+  run_once: yes
+  ignore_errors: yes
+  shell:
+    cmd: "/usr/bin/kubectl label nodes k8s-node-1 k8s-app=nexus3"
+  tags: nexus-env
+
+- name: 删除tls--nexus
+  run_once: yes
+  ignore_errors: yes
+  shell:
+    cmd: "/usr/bin/kubectl delete secret tls-nexus -n devops"
+    chdir: "{{k8s_work_dir}}/yml/nexus/tls"
+  tags: nexus-install
+
+- name: 创建tls--nexus
+  run_once: yes
+  shell:
+    cmd: "/usr/bin/kubectl create secret tls tls-nexus --cert=nexus.wax.com.crt --key=nexus.wax.com.key -n devops"
+    chdir: "{{k8s_work_dir}}/yml/nexus/tls"
+  tags: nexus-install
+
+- name: 删除--nexus
+  run_once: yes
+  ignore_errors: yes
+  shell:
+    cmd: "/usr/bin/kubectl delete -f ."
+    chdir: "{{k8s_work_dir}}/yml/nexus"
+  tags: nexus-install
+
+- name: 部署--nexus
+  run_once: yes
+  shell:
+    cmd: "/usr/bin/kubectl apply -f ."
+    chdir: "{{k8s_work_dir}}/yml/nexus"
+  tags: nexus-install

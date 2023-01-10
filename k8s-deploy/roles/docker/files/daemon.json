@@ -1,0 +1,15 @@
+{
+  "data-root": "/var/lib/docker",
+  "exec-opts": ["native.cgroupdriver=systemd"],
+  "registry-mirrors": ["https://fa5bywrw.mirror.aliyuncs.com","https://harbor.wax.com"],
+  "insecure-registries": ["127.0.0.1"],
+  "max-concurrent-downloads": 10,
+  "live-restore": true,
+  "log-driver": "json-file",
+  "log-level": "warn",
+  "log-opts": {
+    "max-size": "50m",
+    "max-file": "1"
+  },
+  "storage-driver": "overlay2"
+}

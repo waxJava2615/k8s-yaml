@@ -1,0 +1,6 @@
+ kubectl get secret -n devops jenkins -oyaml | awk /password:/{'print $2'} | base64 -d
+
+
+kubectl exec -n devops -it svc/jenkins -c jenkins -- /bin/cat /run/secrets/additional/chart-admin-password && echo
+
+PGLTj6vlgTm60sYtMANp2y

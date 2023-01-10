@@ -1,0 +1,13 @@
+[Unit]
+Description=Jenkins
+After=network.target
+
+[Service]
+Type=forking
+ExecStart=/opt/jenkins/cfg/start_jenkins_28869.sh start
+ExecReload=
+ExecStop=/opt/jenkins/cfg/start_jenkins_28869.sh stop
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

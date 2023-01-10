@@ -1,0 +1,98 @@
+---
+- name: K8S集群node---创建工作目录
+  file: dest={{ k8s_work_dir }}/{{ item }} state=directory
+  with_items:
+    - bin
+    - cfg
+    - ssl
+    - logs
+
+- name: K8S集群node---创建cni插件目录
+  file: dest={{ item }} state=directory
+  with_items:
+    - /opt/cni/bin
+    - /etc/cni/net.d
+
+- name: K8S集群node---创建临时目录
+  file: dest={{ tmp_dir }} state=directory
+  tags: send_img_dk
+
+- name: K8S集群node---分发并解压k8s二进制包（需要花费一些时间...）
+  unarchive: src={{ item }} dest={{ tmp_dir }}
+  with_fileglob:
+    - "{{ software_dir }}/kubernetes-*.tar.gz"
+
+- name: K8S集群node---分发并解压cni插件二进制包
+  unarchive: src={{ item }} dest=/opt/cni/bin
+  with_fileglob:
+    - "{{ software_dir }}/cni-plugins-*.tgz"
+
+- name: K8S集群node---移动k8s node二进制文件
+  shell: cp -rf {{ tmp_dir }}/kubernetes/server/bin/{kubelet,kube-proxy} {{ k8s_work_dir }}/bin
+
+- name: K8S集群node---分发k8s证书
+  copy: src=k8s_cert/{{ item }} dest={{ k8s_work_dir }}/ssl
+  with_items:
+    - ca.pem
+    - kube-proxy.pem
+    - kube-proxy-key.pem
+
+
+- name: K8S集群node---分发k8s配置文件  (docker中exec-opts值 等于 kubelet-config.yml的cgroupDriver 是必须的)
+  template: src={{ item }} dest={{ k8s_work_dir }}/cfg/{{ item.split('.')[:-1]|join('.') }}
+  with_items:
+    - bootstrap.kubeconfig.j2
+    - kubelet.conf.j2
+    - kubelet-config.yml.j2
+    - kube-proxy.kubeconfig.j2
+    - kube-proxy.conf.j2
+    - kube-proxy-config.yml.j2
+
+
+- name: K8S集群node---分发service文件
+  template: src={{ item }} dest=/usr/lib/systemd/system/{{ item.split('.')[:-1]|join('.') }}
+  with_items:
+    - kubelet.service.j2
+    - kube-proxy.service.j2
+
+- name: K8S集群node---检测kubelet是否启动
+  ansible.builtin.systemd:
+    name: kubelet
+  register: check_kubelet
+
+
+- name: K8S集群node---启动kubelet
+  systemd: name=kubelet state=started daemon_reload=yes
+  when: check_kubelet.status.ActiveState == 'inactive' or check_kubelet.status.ActiveState == 'failed'
+
+- name: K8S集群node---重启kubelet
+  systemd: name=kubelet state=restarted daemon_reload=yes
+  when: check_kubelet.status.ActiveState == 'active'
+
+
+- name: K8S集群node---检测kube-proxy是否启动
+  ansible.builtin.systemd:
+    name: kube-proxy
+  register: check_kube_proxy
+
+- name: K8S集群node---启动kube-proxy
+  systemd: name=kube-proxy state=started daemon_reload=yes
+  when: check_kube_proxy.status.ActiveState == 'inactive' or check_kube_proxy.status.ActiveState == 'failed'
+
+- name: K8S集群node---重启kube-proxy
+  systemd: name=kube-proxy state=restarted daemon_reload=yes
+  when: check_kube_proxy.status.ActiveState == 'active'
+
+- name: K8S集群node---分发预准备镜像
+  copy: src={{ software_dir }}/image.tar.gz dest={{ tmp_dir }}
+  tags: send_img_dk
+
+- name: K8S集群node---导入镜像
+  shell: cd {{ tmp_dir }} && \
+    tar zxf image.tar.gz && \
+    for image in $(ls *.tar);do docker load < $image;done
+  tags: send_img_dk
+
+- name: K8S集群node---释放资源
+  shell: rm -rf {{tmp_dir}}
+  tags: k8s_clear_zip

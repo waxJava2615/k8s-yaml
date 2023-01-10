@@ -1,0 +1,11 @@
+#要么注释掉文件中的kms的配置  要么配置一个空文件
+#kubectl apply -f csi-kms-config-map.yaml
+---
+apiVersion: v1
+kind: ConfigMap
+data:
+  config.json: |-
+    {}
+metadata:
+  name: ceph-csi-encryption-kms-config
+  namespace: cephfs-csi

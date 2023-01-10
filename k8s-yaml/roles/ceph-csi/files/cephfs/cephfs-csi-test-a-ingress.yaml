@@ -1,0 +1,18 @@
+kind: Ingress
+apiVersion: networking.k8s.io/v1 #extensions/v1beta1 (k8s v1.19版前使用)
+metadata:
+  name: cephfs-csi-test-a-ingress
+  namespace: cephfs-csi
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: cephfs.wax-a.com
+      http:
+        paths:
+          - path: "/"
+            pathType: Prefix
+            backend:
+              service:
+                name: nginx-ccephfs-a
+                port:
+                  number: 80

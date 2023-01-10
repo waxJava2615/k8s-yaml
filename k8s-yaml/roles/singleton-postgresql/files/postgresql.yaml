@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: singleton-pgsql
+  namespace: devops
+  labels:
+    app: singleton-pgsql
+spec:
+  replicas: 1
+  template:
+    metadata:
+      name: singleton-pgsql
+      labels:
+        app: singleton-pgsql
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: singleton-pgsql
+          image: postgres:13.8-alpine3.16
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PGDATA
+              value: /pgdata/data
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              value: postgres
+            - name: POSTGRES_ROOT_PASSWORD
+              value: postgres
+            - name: POSTGRES_DATABASE
+              value: postgres
+            - name: TZ
+              value: Asia/Shanghai
+          ports:
+            - name: postgres
+              containerPort: 5432
+          volumeMounts:
+            - mountPath: /pgdata
+              name: postgresql
+      volumes:
+        - name: postgresql
+          persistentVolumeClaim:
+            claimName: singleton-pgsql-pvc
+  selector:
+    matchLabels:
+      app: singleton-pgsql

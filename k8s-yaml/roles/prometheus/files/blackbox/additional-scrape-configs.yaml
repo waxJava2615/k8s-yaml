@@ -1,0 +1,18 @@
+# 使用kube-prometheus部署套件会自动部署blackbox_exporter服务，特别注意：开启的端口是19115而不是9115，可以到pod内ps查看
+- job_name: 'blackbox'
+  metrics_path: /probe
+  params:
+    module: [http_2xx]  # Look for a HTTP 200 response.
+  static_configs:
+    - targets:
+        - http://www.baidu.com # Target to probe with http on port 8080.
+        - https://m.xincheping.com
+        - https://www.xincheping.com
+        - https://www.xincheping.net
+  relabel_configs:
+    - source_labels: [__address__]
+      target_label: __param_target
+    - source_labels: [__param_target]
+      target_label: instance
+    - target_label: __address__
+      replacement: blackbox-exporter.monitoring.svc.cluster.local:19115  # The blackbox exporter's real hostname:port.

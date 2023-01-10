@@ -1,0 +1,12 @@
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: static-ceph-claim
+  namespace: test
+spec:
+  accessModes:
+    - ReadWriteOnce
+    - ReadOnlyMany
+  resources:
+    requests:
+      storage: 200Mi

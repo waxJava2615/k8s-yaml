@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: static-test-ceph-pod
+  namespace: test
+spec:
+  containers:
+    - name: static-ceph-nginx-pod
+      image: nginx:1.18.0
+      imagePullPolicy: IfNotPresent
+      ports:
+        - containerPort: 80
+      volumeMounts:
+        - name: ceph-mnt
+          mountPath: /mnt
+          readOnly: false
+  volumes:
+    - name: ceph-mnt
+      persistentVolumeClaim:
+        claimName: static-ceph-claim

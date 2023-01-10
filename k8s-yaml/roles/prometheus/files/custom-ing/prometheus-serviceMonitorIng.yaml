@@ -1,0 +1,21 @@
+# kubectl -n monitoring create secret generic etcd-certs --from-file=/opt/kubernetes/ssl/etcd/ca.pem  --from-file=/opt/kubernetes/ssl/etcd/etcd.pem  --from-file=/opt/kubernetes/ssl/etcd/etcd-key.pem
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:  # ServiceMonitor的标签需要包含prometheus的selectorMonitorSelector中的条件
+    app.kubernetes.io/name: ingress-metrics
+  name: ingress-metrics
+  namespace: monitoring
+spec:
+  jobLabel: ingress-metrics
+  endpoints:
+  - interval: 15s
+    port: ingress-metrics   #service中的spec.ports.name
+    path: /metrics
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ingress-metrics   # 跟scv的lables保持一致
+  namespaceSelector:
+    matchNames:
+      - ingress-nginx   # 跟svc所在namespace保持一致

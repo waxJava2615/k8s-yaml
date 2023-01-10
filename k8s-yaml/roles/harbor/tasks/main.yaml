@@ -1,0 +1,84 @@
+# 使用postsql 14部署 notary 不行
+# https://github.com/goharbor/harbor/issues/16135
+---
+- name: 添加helm的 harbor 仓库
+  shell:
+    cmd: "helm repo add harbor https://helm.goharbor.io"
+    chdir: "{{helm_download_dir}}"
+  ignore_errors: yes
+  tags: harbor-down
+
+- name: 下载 harbor 镜像 1.9.0==>2.5.0
+  shell:
+    cmd: "helm pull harbor/harbor --version 1.9.0"
+    chdir: "{{helm_download_dir}}"
+  ignore_errors: yes
+  tags: harbor-down
+
+- name: 解压 harbor 镜像
+#  shell:
+#    cmd: "tar -zxvf gitlab-6.2.2.tgz"
+#    chdir: "{{helm_download_dir}}"
+  unarchive: src={{helm_download_dir}}/harbor-1.9.0.tgz dest={{helm_download_dir}} copy=no mode=0777
+  ignore_errors: yes
+  tags: harbor-down
+
+
+- name: 分发配置
+  copy:
+    src: "helm/values.yaml"
+    dest: "{{helm_download_dir}}/harbor/"
+    mode: "0777"
+  tags: harbor-env,harbor-install,harbor-update
+
+- name: 创建 namespace
+  shell: |
+    /usr/bin/kubectl create ns devops
+  ignore_errors: yes
+  run_once: yes
+  tags: harbor-env
+
+- name: 创建tls存储
+  file:
+    path: "{{k8s_work_dir}}/yml/harbor/tls"
+    state: directory
+    mode: "0777"
+  tags: harbor-env
+
+- name: 分发tls配置
+  copy:
+    src: "{{item}}"
+    dest: "{{k8s_work_dir}}/yml/harbor/tls"
+    mode: "0777"
+  with_fileglob:
+    - "tls/*"
+  tags: harbor-env
+
+- name: 删除tls
+  run_once: yes
+  ignore_errors: yes
+  shell:
+    cmd: "/usr/bin/kubectl delete secret tls-harbor -n devops"
+    chdir: "{{k8s_work_dir}}/yml/harbor/tls"
+  tags: harbor-dev
+
+- name: 创建tls
+  run_once: yes
+  shell:
+    cmd: "/usr/bin/kubectl create secret tls tls-harbor --cert=harbor.wax.com.crt --key=harbor.wax.com.key -n devops"
+    chdir: "{{k8s_work_dir}}/yml/harbor/tls"
+  tags: harbor-dev
+
+- name: 安装 harbor
+  run_once: yes
+  shell:
+    cmd: "sleep 10 && /usr/local/bin/helm install -n devops harbor . --debug"
+    chdir: "{{helm_download_dir}}/harbor"
+  tags: harbor-install
+
+- name: 更新 harbor
+  run_once: yes
+  shell:
+    cmd: "sleep 10 && /usr/local/bin/helm upgrade -n devops harbor . --debug"
+    chdir: "{{helm_download_dir}}/harbor"
+  tags: harbor-update

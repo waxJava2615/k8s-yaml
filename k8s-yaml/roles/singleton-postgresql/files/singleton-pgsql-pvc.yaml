@@ -1,0 +1,13 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: singleton-pgsql-pvc     #pvc名称
+  namespace: devops
+spec:
+  accessModes:
+    - ReadWriteOnce     #访问模式
+  resources:
+    requests:
+      storage: 6Gi      #存储空间 必须为10Gi以上 否则绑定失败创建PV失败
+  storageClassName: singleton-pgsql-sc   #后端storageclass名称

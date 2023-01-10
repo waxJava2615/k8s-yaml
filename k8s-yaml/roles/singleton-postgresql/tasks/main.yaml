@@ -1,0 +1,46 @@
+---
+
+- name: 创建文件存储
+  file:
+    path: "{{k8s_work_dir}}/yml/singleton-postgresql"
+    state: directory
+    mode: "0777"
+  tags: sl_pg_env
+
+- name: 创建命名空间devops
+  shell: |
+    /usr/bin/kubectl create ns devops
+  run_once: yes
+  ignore_errors: yes
+  tags: sl_pg_env
+
+- name: 分发配置文件
+  copy:
+    src: "{{ item }}"
+    dest: "{{k8s_work_dir}}/yml/singleton-postgresql"
+    mode: "0777"
+  with_fileglob:
+    - "*.yaml"
+  tags: sl_pg_env
+
+- name: 卸载原有pgsql
+  shell:
+    cmd: "/usr/bin/kubectl delete -f ."
+    chdir: "{{k8s_work_dir}}/yml/singleton-postgresql"
+  run_once: yes
+  ignore_errors: yes
+  tags: sl_pg_start
+
+- name: 部署pgsql
+  shell:
+    cmd: "/usr/bin/kubectl apply -f ."
+    chdir: "{{k8s_work_dir}}/yml/singleton-postgresql"
+  run_once: yes
+  tags: sl_pg_start
+
+- name: 使用客户端创建 gitlab 数据库
+  debug:
+    msg: "使用客户端创建gitlab数据库: gitlabhq_production \n harbor数据库：harbor harbor_notary_server harbor_notary_signer"
+  run_once: yes
+  ignore_errors: yes
+  tags: sl_pg_start

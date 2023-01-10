@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: nginx-ceph-csi-rbd-test
+  name: nginx-ceph-csi-rbd-test
+  namespace: ceph-csi
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: nginx-ceph-csi-rbd-test
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      name: nginx-ceph-csi-rbd-test
+      labels:
+        app: nginx-ceph-csi-rbd-test
+    spec:
+      containers:
+        - image: nginx:1.18.0
+          imagePullPolicy: IfNotPresent
+          name: nginx-ceph-csi-rbd-test
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          volumeMounts:
+            - mountPath: "/usr/share/nginx/html"
+              name: ceph-csi-rbd-volume
+      restartPolicy: Always
+      volumes:
+        - name: ceph-csi-rbd-volume   # 需与volumeMounts下的name值相等
+          persistentVolumeClaim:
+            claimName: csi-rbd-pvc-01
+            readOnly: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-ceph-csi-rbd-test
+  namespace: ceph-csi
+spec:
+  ports:
+    - port: 80  #指容器端口
+      protocol: TCP
+      nodePort: 31180
+  selector:
+    app: nginx-ceph-csi-rbd-test
+  sessionAffinity: None
+  type: NodePort

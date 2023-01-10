@@ -1,0 +1,39 @@
+---
+
+- name: 创建挂载目录
+  file:
+    path: /data/data_ceph
+    state: directory
+    recurse: true
+    mode: 0755
+  tags: ceph_auto_mount
+
+- name: 分发ceph源配置文件
+  copy: src=ceph.repo dest=/etc/yum.repos.d/ceph.repo
+
+
+- name: 开机挂载目录
+  lineinfile:
+    path: /etc/fstab
+    regexp: "^192.168.0.211:6789,192.168.0.212:6789,192.168.0.213:6789:/ /data/data_ceph ceph defaults,name=admin,secretfile=/etc/ceph/admin.key,_netdev 0 0"
+    line: "192.168.0.211:6789,192.168.0.212:6789,192.168.0.213:6789:/ /data/data_ceph ceph defaults,name=admin,secretfile=/etc/ceph/admin.key,_netdev 0 0"
+  tags: ceph_auto_mount
+
+- name: 构建缓存
+  shell: |
+    yum makecache
+
+- name: 安装node需要的源
+  yum:
+    name:
+      - python-setuptools
+      - epel-release
+      - ceph-release
+      - ceph-mon
+      - ceph-mgr
+      - ceph-mds
+      - ceph
+      - ceph-common
+      - ceph-radosgw
+    state: present
+  ignore_errors: yes

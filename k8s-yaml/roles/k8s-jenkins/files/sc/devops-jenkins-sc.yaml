@@ -1,0 +1,22 @@
+# 动态存储
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: devops-jenkins-sc     #storageclass名称
+  namespace: devops
+provisioner: cephfs.csi.ceph.com   #驱动器
+parameters:
+  clusterID: 8f1e0e78-2bf5-4c42-ab6f-5f097bf9f227   #ceph集群id
+  fsName: mycephfs
+  csi.storage.k8s.io/provisioner-secret-name: csi-cephfs-secret
+  csi.storage.k8s.io/provisioner-secret-namespace: cephfs-csi
+  csi.storage.k8s.io/controller-expand-secret-name: csi-cephfs-secret
+  csi.storage.k8s.io/controller-expand-secret-namespace: cephfs-csi
+  csi.storage.k8s.io/node-stage-secret-name: csi-cephfs-secret
+  csi.storage.k8s.io/node-stage-secret-namespace: cephfs-csi
+reclaimPolicy: Delete   #pvc回收机制
+allowVolumeExpansion: true   #对扩展卷进行扩展
+mountOptions:           #StorageClass 动态创建的 PersistentVolume 将使用类中 mountOptions 字段指定的挂载选项
+  - discard
+  - debug

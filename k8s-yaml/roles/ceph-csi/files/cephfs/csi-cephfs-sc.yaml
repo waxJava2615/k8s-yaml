@@ -1,0 +1,39 @@
+# 注意事项  使用前需先创建
+# ceph osd pool create cephfs-metadata 8 8
+# ceph osd pool create cephfs-data 16 16
+# ceph fs new mycephfs cephfs-metadata cephfs-data  #创建一个名为 mycephfs 的文件系统
+# ceph auth print-key client.admin > admin.key
+# 将文件复制的所用节点
+# scp ceph.conf ceph.client.admin.keyring admin.key root@192.168.0.xxx:/etc/ceph/
+# 目录 /data2要存在机器上
+# 挂载： mount -t ceph 192.168.43.101:6789,192.168.43.102:6789:/ /data2 -o name=admin,secretfile=/etc/ceph/admin.key
+# /etc/fstab下添加开机挂载 192.168.43.101:6789,192.168.43.102:6789:/ /data2 ceph defaults,name=admin,secretfile=/etc/ceph/admin.key,_netdev 0 0
+
+# 检查remote-fs.target服务是否开启，直接影响到fstab开机自动挂载是否生效，没错，关闭了，挂载一辈子可能都挂不上哦
+# systemctl start remote-fs.target
+# systemctl enable remote-fs.target
+
+
+# 动态存储
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: csi-cephfs-sc     #storageclass名称
+  namespace: cephfs-csi
+provisioner: cephfs.csi.ceph.com   #驱动器
+parameters:
+  clusterID: 8f1e0e78-2bf5-4c42-ab6f-5f097bf9f227   #ceph集群id
+  fsName: mycephfs
+  csi.storage.k8s.io/provisioner-secret-name: csi-cephfs-secret
+  csi.storage.k8s.io/provisioner-secret-namespace: cephfs-csi
+  csi.storage.k8s.io/controller-expand-secret-name: csi-cephfs-secret
+  csi.storage.k8s.io/controller-expand-secret-namespace: cephfs-csi
+  csi.storage.k8s.io/node-stage-secret-name: csi-cephfs-secret
+  csi.storage.k8s.io/node-stage-secret-namespace: cephfs-csi
+reclaimPolicy: Delete   #pvc回收机制
+allowVolumeExpansion: true   #对扩展卷进行扩展
+mountOptions:           #StorageClass 动态创建的 PersistentVolume 将使用类中 mountOptions 字段指定的挂载选项
+  - discard
+  - debug
+

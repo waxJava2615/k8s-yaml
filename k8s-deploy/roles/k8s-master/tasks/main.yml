@@ -1,0 +1,163 @@
+---
+- name: K8S集群master---创建工作目录
+  file: dest={{ k8s_work_dir }}/{{ item }} state=directory
+  with_items:
+    - bin
+    - cfg
+    - ssl
+    - logs
+
+- name: K8S集群master---创建临时目录
+  file: dest={{tmp_dir}} state=directory
+
+- name: K8S集群master---创建etcd证书存放目录
+  file: dest={{k8s_work_dir}}/ssl/etcd state=directory
+
+- name: K8S集群master---分发二进制包k8s-server
+  unarchive: src={{item}} dest={{tmp_dir}}
+  with_fileglob:
+    - "{{software_dir}}/kubernetes-*.tar.gz"
+
+- name: K8S集群master---移动master的k8s文件
+  shell: cp -rf {{ tmp_dir }}/kubernetes/server/bin/{kube-apiserver,kube-controller-manager,kube-scheduler} {{ k8s_work_dir }}/bin && \
+         cp -rf {{ tmp_dir }}/kubernetes/server/bin/kubectl /usr/bin
+
+- name: K8S集群master---分发k8s证书
+  copy: src=k8s_cert/{{item}} dest={{k8s_work_dir}}/ssl
+  with_items:
+    - ca.pem
+    - ca-key.pem
+    - server.pem
+    - server-key.pem
+    - kube-controller-manager.pem
+    - kube-controller-manager-key.pem
+    - kube-scheduler.pem
+    - kube-scheduler-key.pem
+    - admin.pem
+    - admin-key.pem
+#    - dashboard.pem
+#    - dashboard-key.pem
+
+- name: K8S集群master---分发etcd证书
+  copy: src=etcd_cert/{{ item }} dest={{ k8s_work_dir }}/ssl/etcd
+  with_items:
+    - ca.pem
+    - etcd.pem
+    - etcd-key.pem
+
+- name: K8S集群master---分发Token文件
+  copy: src=token.csv dest={{k8s_work_dir}}/cfg
+
+- name: K8S集群master---分发k8s配置文件
+  template: src={{ item }} dest={{ k8s_work_dir }}/cfg/{{ item.split('.')[:-1]|join('.') }}
+  with_items:
+    - kube-apiserver.conf.j2
+    - kube-controller-manager.conf.j2
+    - kube-scheduler.conf.j2
+    - kube-controller-manager.kubeconfig.j2
+    - kube-scheduler.kubeconfig.j2
+
+- name: K8S集群master---分发service文件  当i缺省时，默认为0，即 a[:3]相当于 a[0:3] 当j缺省时 即a[1:]相当于a[1:len]
+  template: src={{ item }} dest=/usr/lib/systemd/system/{{ item.split('.')[:-1]|join('.') }}
+  with_items:
+    - kube-apiserver.service.j2
+    - kube-controller-manager.service.j2
+    - kube-scheduler.service.j2
+
+- name: K8S集群master---检测kube-apiserver是否启动
+  ansible.builtin.systemd:
+    name: kube-apiserver
+  register: check_kube_apiserver
+
+- name: K8S集群master---启动kube-apiserver
+  systemd: name=kube-apiserver state=started daemon_reload=yes
+  when: check_kube_apiserver.status.ActiveState == 'inactive' or check_kube_apiserver.status.ActiveState == 'failed'
+
+- name: K8S集群master---重启kube-apiserver
+  systemd: name=kube-apiserver state=restarted daemon_reload=yes
+  when: check_kube_apiserver.status.ActiveState == 'active'
+
+- name: K8S集群master---开机启用kube-apiserver
+  shell: systemctl enable kube-apiserver
+  ignore_errors: true
+  when: check_kube_apiserver.status.UnitFileState == 'disabled'
+
+- name: K8S集群master---检测kube-controller-manager是否启动
+  ansible.builtin.systemd:
+    name: kube-controller-manager
+  register: check_kube_controller_manager
+
+- name: K8S集群master---启动kube-controller-manager
+  systemd: name=kube-controller-manager state=started daemon_reload=yes
+  when: check_kube_controller_manager.status.ActiveState == 'inactive' or check_kube_controller_manager.status.ActiveState == 'failed'
+
+- name: K8S集群master---重启kube-controller-manager
+  systemd: name=kube-controller-manager state=restarted daemon_reload=yes
+  when: check_kube_controller_manager.status.ActiveState == 'active'
+
+- name: K8S集群master---开机启用kube-controller-manager
+  shell: systemctl enable kube-controller-manager
+  ignore_errors: true
+  when: check_kube_controller_manager.status.UnitFileState == 'disabled'
+
+- name: K8S集群master---检测kube-scheduler是否启动
+  ansible.builtin.systemd:
+    name: kube-scheduler
+  register: check_kube_scheduler
+
+- name: K8S集群master---启动kube-scheduler
+  systemd: name=kube-scheduler state=started daemon_reload=yes
+  when: check_kube_scheduler.status.ActiveState == 'inactive' or check_kube_scheduler.status.ActiveState == 'failed'
+
+- name: K8S集群master---重启kube-scheduler
+  systemd: name=kube-scheduler state=restarted daemon_reload=yes
+  when: check_kube_scheduler.status.ActiveState == 'active'
+
+- name: K8S集群master---开机启用kube-scheduler
+  shell: systemctl enable kube-scheduler
+  ignore_errors: true
+  when: check_kube_scheduler.status.UnitFileState == 'disabled'
+
+
+- name: K8S集群master---创建kubectl配置文件目录
+  file: dest=/root/.kube state=directory
+
+- name: K8S集群master---分发k8s配置文件
+  template: src=config.j2 dest=/root/.kube/config mode=0777
+
+- name: K8S集群master---查看集群状态
+  shell: sleep 3 && kubectl get cs
+  register: cs
+- debug: var=cs.stdout_lines
+
+- name: K8S集群master---拷贝RBAC文件
+  copy: src={{ item }} dest={{k8s_work_dir}}/cfg
+  with_items:
+    - kubelet-bootstrap-rbac.yaml
+    - apiserver-to-kubelet-rbac.yaml
+  tags: k8s_cluster_master,k8s_cluster_master_rbac
+
+
+- name: K8S集群master---授权APIServer访问Kubelet与授权kubelet bootstrap
+  ignore_errors: yes
+  shell: |
+    sleep 3
+    kubectl apply -f {{ k8s_work_dir }}/cfg/apiserver-to-kubelet-rbac.yaml
+    kubectl apply -f {{ k8s_work_dir }}/cfg/kubelet-bootstrap-rbac.yaml
+  tags: k8s_cluster_master,k8s_cluster_master_rbac
+
+- name: K8S集群master---自动审批Kubelet证书
+  ignore_errors: yes
+  shell: |
+    #自动批准首次申请证书的 CSR 请求
+    kubectl create clusterrolebinding node-client-auto-approve-csr --clusterrole=system:certificates.k8s.io:certificatesigningrequests:nodeclient --user=kubelet-bootstrap
+    # 自动批准kubelet客户端证书续签
+    kubectl create clusterrolebinding node-client-auto-renew-crt --clusterrole=system:certificates.k8s.io:certificatesigningrequests:selfnodeclient --group=system:nodes
+    # 自动批准kubelet服务端证书续签
+    kubectl create clusterrolebinding node-server-auto-renew-crt --clusterrole=system:certificates.k8s.io:certificatesigningrequests:selfnodeserver --group=system:nodes
+  tags: k8s_cluster_master,k8s_cluster_master_rbac
+
+
+- name: K8S集群node---释放资源
+  shell: rm -rf {{tmp_dir}}
+  tags: k8s_clear_zip

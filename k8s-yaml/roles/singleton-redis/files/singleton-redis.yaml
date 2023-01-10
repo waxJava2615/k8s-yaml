@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: singleton-redis
+  namespace: devops
+  labels:
+    app: singleton-redis
+spec:
+  replicas: 1
+  serviceName: singleton-redis
+  template:
+    metadata:
+      name: singleton-redis
+      labels:
+        app: singleton-redis
+    spec:
+      containers:
+        - name: singleton-redis
+          image: redis:6.0
+          imagePullPolicy: IfNotPresent
+          env:
+#            - name: REDIS_PASSWORD
+#              value: "www123"
+            - name: TZ
+              value: "Asia/Shanghai"
+          command:
+            - "sh"
+            - "-c"
+            - "redis-server /usr/local/etc/redis/redis.conf"
+          ports:
+            - containerPort: 6379
+              protocol: TCP
+          resources:
+            limits:
+              cpu: 800m
+              memory: 1024Mi
+            requests:
+              cpu: 800m
+              memory: 1024Mi
+          livenessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 300
+            timeoutSeconds: 1
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 5
+            timeoutSeconds: 1
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 3
+          volumeMounts:
+            - name: singleton-redis-data
+              mountPath: /data
+              subPath: redis
+            - name: singleton-redis-conf
+              mountPath: /usr/local/etc/redis/redis.conf
+              subPath: redis.conf
+      volumes:
+        - name: singleton-redis-data
+          persistentVolumeClaim:
+            claimName: singleton-redis-pvc
+        - name: singleton-redis-conf
+          configMap:
+            name: singleton-redis-conf
+      restartPolicy: Always
+      nodeSelector:
+        ingress: "true"
+  selector:
+    matchLabels:
+      app: singleton-redis
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: singleton-redis
+  namespace: devops
+spec:
+  selector:
+    app: singleton-redis
+  ports:
+    - port: 36379
+      protocol: TCP
+      nodePort: 36379
+      targetPort: 6379
+  type: NodePort
+
+
+
+
+
+

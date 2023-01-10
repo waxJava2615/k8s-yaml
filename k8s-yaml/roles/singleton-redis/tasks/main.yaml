@@ -1,0 +1,40 @@
+---
+
+- name: 创建文件存储
+  file:
+    path: "{{k8s_work_dir}}/yml/singleton-redis"
+    state: directory
+    mode: "0777"
+  ignore_errors: yes
+  tags: sl_redis_env
+
+- name: 创建命名空间devops
+  shell: |
+    /usr/bin/kubectl create ns devops
+  run_once: yes
+  ignore_errors: yes
+  tags: sl_redis_env
+
+- name: 分发yaml文件
+  copy:
+    src: "{{ item }}"
+    dest: "{{k8s_work_dir}}/yml/singleton-redis"
+    mode: "0777"
+  with_fileglob:
+    - "*.yaml"
+  tags: sl_redis_env
+
+- name: 卸载原来部署的redis
+  shell:
+    cmd: "/usr/bin/kubectl delete -f ."
+    chdir: "{{k8s_work_dir}}/yml/singleton-redis"
+  run_once: yes
+  ignore_errors: yes
+  tags: sl_redis_start
+
+- name: 部署到K8S 中
+  shell:
+    cmd: "/usr/bin/kubectl apply -f ."
+    chdir: "{{k8s_work_dir}}/yml/singleton-redis"
+  run_once: yes
+  tags: sl_redis_start

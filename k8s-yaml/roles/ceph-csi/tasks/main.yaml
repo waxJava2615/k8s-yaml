@@ -1,0 +1,155 @@
+---
+
+- name: 创建ceph-rbd动态pv的目录
+  file: path={{k8s_work_dir}}/yml/ceph-csi/rbd state=directory
+  tags: ceph-csi-rbd
+
+- name: 分发配置文件
+  copy: src={{item}} dest={{k8s_work_dir}}/yml/ceph-csi/rbd mode=0755
+  with_fileglob:
+    - "rbd/1.24/*.yaml"
+  tags: ceph-csi-rbd
+
+- name: 创建CSI的namespace
+  shell: |
+    /usr/bin/kubectl create ns ceph-csi
+  ignore_errors: yes
+  run_once: yes
+  tags: ceph-csi-rbd
+
+- name: master节点安装ceph-common
+  ignore_errors: yes
+  yum:
+    name:
+      - ceph-common
+    state: present
+  tags: ceph-csi-rbd
+
+- name: 分发检测脚本
+  copy: src=rbd/1.24/csi-check-status.sh dest={{k8s_work_dir}}/yml/ceph-csi/rbd mode=0755
+  tags: ceph-csi-rbd
+
+
+
+# sed -i "s/namespace: default/namespace: ceph-csi/g" $(grep -rl "namespace: default" ./)
+# sed -i -e "/^kind: ServiceAccount/{N;N;a\  namespace: ceph-csi  # 输入到这里的时候需要按一下回车键，在下一行继续输入
+#  }" $(egrep -rl "^kind: ServiceAccount" ./)
+- name: 将配置文件应用至k8s
+  shell: |
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/rbd/csi-config-map.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/rbd/ceph-config-map.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/rbd/csi-rbd-secret.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/rbd/csi-kms-config-map.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/rbd/csi-provisioner-rbac.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/rbd/csi-nodeplugin-rbac.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/rbd/csi-rbdplugin-provisioner.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/rbd/csi-rbdplugin.yaml
+  run_once: yes
+  tags: ceph-csi-rbd
+
+- name: 检查服务是否全部run
+  shell:
+    cmd: "sh {{k8s_work_dir}}/yml/ceph-csi/rbd/csi-check-status.sh"
+  register: csi_check_status
+  until: csi_check_status.stdout == "1"
+  retries: 90
+  delay: 30
+  run_once: yes
+  ignore_errors: true
+  tags: ceph-csi-rbd, csi-check-status-reg
+- debug: var=csi_check_status
+  run_once: yes
+  tags: ceph-csi-rbd, csi-check-status-reg
+
+- name: 先卸载相关svc和pv pod
+  shell: |
+    /usr/bin/kubectl delete -f {{k8s_work_dir}}/yml/ceph-csi/rbd/csi-rbd-sc.yaml
+    /usr/bin/kubectl delete -f {{k8s_work_dir}}/yml/ceph-csi/rbd/csi-rbd-pvc.yaml
+    /usr/bin/kubectl delete -f {{k8s_work_dir}}/yml/ceph-csi/rbd/csi-deploy-test-pod.yaml
+  when: csi_check_status.stdout == "1"
+  run_once: yes
+  ignore_errors: true
+  tags: ceph-csi-rbd,csi-check-status-reg
+
+- name: 获取csi服务状态正常则安装sc pvc 以及测试服务
+  shell: |
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/rbd/csi-rbd-sc.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/rbd/csi-rbd-pvc.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/rbd/csi-deploy-test-pod.yaml
+  when: csi_check_status.stdout == "1"
+  run_once: yes
+  tags: ceph-csi-rbd,csi-check-status-reg
+
+
+# 一下是cephfs
+- name: 创建ceph-rbd动态pv的目录
+  file: path={{k8s_work_dir}}/yml/ceph-csi/cephfs state=directory mode=0755
+  tags: cephfs-csi
+
+- name: 创建cephfs-csi的namespace
+  shell: |
+    /usr/bin/kubectl create ns cephfs-csi
+  ignore_errors: yes
+  run_once: yes
+  tags: cephfs-csi
+
+- name: 分发文件
+  copy: src={{item}} dest={{k8s_work_dir}}/yml/ceph-csi/cephfs mode=0755
+  with_fileglob:
+    - "cephfs/*.yaml"
+  tags: cephfs-csi
+
+- name: 将配置文件应用至k8s
+  shell: |
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/cephfs/csi-config-map.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/cephfs/ceph-config-map.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/cephfs/csi-cephfs-secret.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/cephfs/csi-kms-config-map.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/cephfs/csi-provisioner-rbac.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/cephfs/csi-nodeplugin-rbac.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/cephfs/csi-cephfsplugin-provisioner.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/cephfs/csi-cephfsplugin.yaml
+  run_once: yes
+  tags: cephfs-csi
+
+- name: 分发检测脚本
+  copy:  src=cephfs/csi-check-status.sh dest={{k8s_work_dir}}/yml/ceph-csi/cephfs mode=0755
+  tags: cephfs-csi,csi-check-status-fs-reg
+
+- name: 检查服务是否全部run
+  shell:
+    cmd: "sh {{k8s_work_dir}}/yml/ceph-csi/cephfs/csi-check-status.sh"
+  register: csi_check_status_fs
+  until: csi_check_status_fs.stdout == "1"
+  retries: 90
+  delay: 30
+  run_once: yes
+  ignore_errors: true
+  tags: cephfs-csi, csi-check-status-fs-reg
+- debug: var=csi_check_status_fs
+  run_once: yes
+  tags: cephfs-csi, csi-check-status-fs-reg
+
+
+- name: 先卸载相关svc和pv pod
+  shell: |
+    /usr/bin/kubectl delete -f {{k8s_work_dir}}/yml/ceph-csi/cephfs/csi-cephfs-sc.yaml
+    /usr/bin/kubectl delete -f {{k8s_work_dir}}/yml/ceph-csi/cephfs/csi-cephfs-pvc.yaml
+    /usr/bin/kubectl delete -f {{k8s_work_dir}}/yml/ceph-csi/cephfs/csi-deploy-test-b.yaml
+    /usr/bin/kubectl delete -f {{k8s_work_dir}}/yml/ceph-csi/cephfs/csi-deploy-test-a.yaml
+    /usr/bin/kubectl delete -f {{k8s_work_dir}}/yml/ceph-csi/cephfs/cephfs-csi-test-a-ingress.yaml
+  when: csi_check_status_fs.stdout == "1"
+  run_once: yes
+  ignore_errors: true
+  tags: cephfs-csi,csi-check-status-fs-reg
+
+- name: 获取csi服务状态正常则安装sc pvc 以及测试服务
+  shell: |
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/cephfs/csi-cephfs-sc.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/cephfs/csi-cephfs-pvc.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/cephfs/csi-deploy-test-a.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/cephfs/csi-deploy-test-b.yaml
+    /usr/bin/kubectl apply -f {{k8s_work_dir}}/yml/ceph-csi/cephfs/cephfs-csi-test-a-ingress.yaml
+  when: csi_check_status_fs.stdout == "1"
+  run_once: yes
+  tags: cephfs-csi,csi-check-status-fs-reg

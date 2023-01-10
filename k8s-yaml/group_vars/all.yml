@@ -1,0 +1,27 @@
+# 安装目录
+software_dir: '/opt/ansible/playbook/binary_pkg'
+etcd_work_dir: '/opt/etcd'
+k8s_work_dir: '/opt/kubernetes'
+cni_bin_dir: '/opt/cin/bin'
+tmp_dir: '/tmp/ansible'
+gitlab_dir: "/opt/gitlab"
+jenkins_dir: "/opt/jenkins"
+helm_download_dir: "/opt/helm-download"
+
+
+# gitlab
+
+external_url: 'https://gitlab.wax.com'
+gitlab_shell_ssh_port: 10222
+
+smtp_enable: false
+smtp_address: "smtp.exmail.qq.com"
+smtp_port: "465"
+smtp_user_name: "xxx@xxx.cn"
+smtp_password: "xxx"
+smtp_authentication: "login"
+gitlab_email_from: "xxx@xxx.cn"
+
+nginx_web_enable: true
+ssl_certificate: "/etc/gitlab/ssl/gitlab.wax.com.pem"
+ssl_certificate_key: "/etc/gitlab/ssl/gitlab.wax.com.key"

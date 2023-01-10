@@ -1,0 +1,25 @@
+[xcp-etcd]
+192.168.0.211  etcd_name=k8s-master-1
+192.168.0.212  etcd_name=k8s-master-2
+192.168.0.213  etcd_name=k8s-node-2
+
+[xcp-master]
+192.168.0.211  node_name=k8s-master-1
+192.168.0.212  node_name=k8s-master-2
+
+
+[xcp-node]
+192.168.0.211  node_name=k8s-master-1
+192.168.0.212  node_name=k8s-master-2
+192.168.0.219  node_name=k8s-node-1
+192.168.0.213  node_name=k8s-node-2
+
+[k8s:children]
+xcp-node
+
+[lb]
+# 如果部署单Master，该项忽略
+192.168.0.211 lb_name=lb-master
+192.168.0.212 lb_name=lb-backup
+
+

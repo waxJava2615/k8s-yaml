@@ -1,0 +1,96 @@
+---
+- name: etcd集群---创建工作目录
+  file:
+    path: "{{etcd_work_dir}}/{{item}}" # path也可以替换成 dest: "{{etcd_work_dir}}/{{item}}"
+    state: directory
+  with_items: 
+    - bin
+    - cfg
+    - ssl
+
+- name: etcd集群---创建临时目录
+  file:
+    path: "{{tmp_dir}}"
+    state: directory
+
+
+- name: etcd集群---分发二进制包
+  unarchive:
+    src: "{{item}}"
+    dest: "{{tmp_dir}}" #远程主机上的一个路径，即文件解压的路径
+  with_fileglob:
+    - "{{software_dir}}/etcd-v*.tar.gz"
+
+- name: etcd集群---移动etcd二进制文件
+  shell: cp -rf {{tmp_dir}}/etcd-v*/{etcd,etcdctl} {{etcd_work_dir}}/bin
+
+- name: etcd集群---分发证书
+  copy:
+    src: "etcd_cert/{{item}}"
+    dest: "{{etcd_work_dir}}/ssl"
+  with_items:
+    - ca.pem
+    - etcd.pem
+    - etcd-key.pem
+
+- name: etcd集群---分发etcd配置文件
+  template: src=etcd.conf.j2 dest={{etcd_work_dir}}/cfg/etcd.conf
+
+- name: etcd集群---分发service配置文件
+  template: src=etcd.service.j2 dest=/usr/lib/systemd/system/etcd.service mode=0755
+
+# 或者使用shell: ps -eaf | grep etcd | wc -l   判断结果是否大于1
+- name: etcd集群---查看etcd是否启动
+  ansible.builtin.systemd:
+    name: etcd
+  register: check_etcd_status
+  tags: check_etcd_status
+- debug: var=check_etcd_status.status.ActiveState
+  tags: check_etcd_status
+
+# 此处也可以获取服务是否启动和开机启动 service_facts.ansible_facts.services['etcd.service'] ==》 {"source": "systemd","state": "running", "status": "enabled"}
+#- name: etcd---节点集群服务
+#  service_facts:
+#  register: service_facts
+#  tags: check_etcd_status
+
+- name: etcd集群---启动ETCD
+  systemd: name=etcd state=started daemon_reload=yes
+  when: check_etcd_status.status.ActiveState == 'inactive' or check_etcd_status.status.ActiveState == 'failed'
+  tags: updata_etcd_status
+
+- name: etcd集群---重启启动ETCD
+  systemd: name=etcd state=restarted daemon_reload=yes
+  when: check_etcd_status.status.ActiveState == 'active'
+  tags: updata_etcd_status
+
+- name: etcd集群---开机启用etcd服务
+  shell: systemctl enable etcd
+  ignore_errors: true
+  when: check_etcd_status.status.UnitFileState == 'disabled'
+
+- name: etcd集群---分发ETCD健康监测脚本
+  template: src=etcd.sh.j2 dest={{ etcd_work_dir }}/etcd-check-status.sh mode=u+x
+
+- name: etcd集群---获取etcd集群状态
+  shell: /bin/bash {{ etcd_work_dir }}/etcd-check-status.sh
+  register: status
+  tags: check_etcd_status_shell
+
+- debug: var=status.stdout_lines
+  tags: check_etcd_status_shell
+
+- name: etcd集群---启动成功后修改集群状态
+  lineinfile:
+    path: "{{etcd_work_dir}}/cfg/etcd.conf"
+    regexp: "^ETCD_INITIAL_CLUSTER_STATE"
+    line: 'ETCD_INITIAL_CLUSTER_STATE="existing"'
+  tags: rep_etcd_status
+
+- name: 重启ETCD集群
+  shell: |
+    systemctl daemon-reload
+    systemctl restart etcd
+  tags: rep_etcd_status
+
+

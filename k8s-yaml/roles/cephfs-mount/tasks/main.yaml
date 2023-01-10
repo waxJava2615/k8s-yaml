@@ -1,0 +1,15 @@
+---
+
+#- name: 创建fs
+#  shell: |
+#    cd /data/ceph-cmd-cluster
+#    ceph osd pool create kubernetes 16 16
+#    ceph osd pool create cephfs_data 16 16
+#    ceph osd pool create cephfs_metadata 8 8
+#    ceph fs new mycephfs cephfs_data cephfs_metadata
+
+- name: 挂载目录
+  shell: |
+    mount /data/data_ceph/
+  tags: ceph_auto_mount
+   

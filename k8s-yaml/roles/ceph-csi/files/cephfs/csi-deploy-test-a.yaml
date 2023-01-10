@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: nginx-ccephfs-a
+  name: nginx-ccephfs-a
+  namespace: cephfs-csi
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: nginx-ccephfs-a
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      name: nginx-ccephfs-a
+      labels:
+        app: nginx-ccephfs-a
+    spec:
+      containers:
+        - image: nginx:1.18.0
+          imagePullPolicy: IfNotPresent
+          name: nginx-ccephfs-a
+          env:  #修改时区
+            - name: TZ
+              value: Asia/Shanghai
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          volumeMounts:
+            - mountPath: "/usr/share/nginx/html"
+              name: cephfs-volume
+      restartPolicy: Always
+      volumes:
+        - name: cephfs-volume   # 需与volumeMounts下的name值相等
+          persistentVolumeClaim:
+            claimName: csi-cephfs-pvc-test
+            readOnly: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-ccephfs-a
+  namespace: cephfs-csi
+spec:
+  ports:
+    - port: 80  #指容器端口
+      protocol: TCP
+      nodePort: 31181
+  selector:
+    app: nginx-ccephfs-a
+  sessionAffinity: None
+  type: NodePort

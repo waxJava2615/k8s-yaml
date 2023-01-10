@@ -1,0 +1,68 @@
+- name: dashboard---创建文件存储目录
+  file: name={{ item }} state=directory
+  with_items:
+    - /opt/kubernetes/yml/dashboard
+
+- name: dashboard---发送bashboard配置文件
+  copy: src={{ item }} dest=/opt/kubernetes/yml/dashboard
+  with_fileglob:
+    - "*.yaml"
+
+- name: dashboard---删除bashboard
+  shell: |
+    kubectl delete -f /opt/kubernetes/yml/dashboard/kubernetes-dashboard.yaml
+  run_once: true
+  ignore_errors: yes
+  tags: dashboard_login_create
+
+- name: dashboard---部署bashboard
+  shell: |
+    kubectl apply -f /opt/kubernetes/yml/dashboard/kubernetes-dashboard.yaml
+  run_once: true
+  tags: dashboard_login_create
+
+- name: dashboard---删除Dashboard管理员令牌
+  ignore_errors: yes
+  shell: |
+    kubectl delete serviceaccount dashboard-admin -n kubernetes-dashboard
+  run_once: true
+  tags: dashboard_login_create
+
+
+- name: dashboard---删除Dashboard管理员令牌
+  ignore_errors: yes
+  shell: |
+    kubectl delete clusterrolebinding dashboard-admin
+  run_once: true
+  tags: dashboard_login_create
+
+- name: dashboard---创建Dashboard管理员令牌
+  ignore_errors: yes
+  shell: |
+    kubectl create serviceaccount dashboard-admin -n kubernetes-dashboard
+    kubectl create clusterrolebinding dashboard-admin --clusterrole=cluster-admin --serviceaccount=kubernetes-dashboard:dashboard-admin
+  run_once: true
+  tags: dashboard_login_create
+
+
+- name: dashboard---添加谷歌浏览器证书
+  ignore_errors: yes
+  shell: |
+    kubectl delete secret kubernetes-dashboard-certs -n kubernetes-dashboard
+    kubectl create secret generic kubernetes-dashboard-certs --from-file=/opt/kubernetes/ssl/ -n kubernetes-dashboard
+  run_once: true
+  tags: dashboard_login_create
+
+- name: dashboard---获取Dashboard管理员令牌
+  ignore_errors: yes
+  shell: |
+    web='https://NodeIP:30001'
+    token=$(kubectl describe secrets -n kubernetes-dashboard \
+    $(kubectl get secret -n kubernetes-dashboard | awk '/dashboard-admin/{print $1}') |awk '/^token/{print $2}')
+    echo "访问地址--->$web"
+    echo "令牌内容--->$token"
+  register: ui
+  tags: dashboard_login_info
+- name: Kubernetes Dashboard登录信息
+  debug: var=ui.stdout_lines
+  tags: dashboard_login_info

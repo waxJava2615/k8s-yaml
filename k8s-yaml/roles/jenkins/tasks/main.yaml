@@ -1,0 +1,54 @@
+---
+- name: 创建jenkins工作目录
+  file:
+    path: "{{jenkins_dir}}"
+    state: directory
+    mode: "0777"
+  tags: jk_init
+
+
+- name: 创建jenkins配置文件存放和war存放
+  file:
+    path: "{{jenkins_dir}}/{{item}}"
+    state: directory
+    mode: "0777"
+  with_items:
+    - cfg
+    - war
+  tags: jk_init
+
+#- name: 下载jenkins的war包
+#  shell:
+#    cmd: "wget -o https://get.jenkins.io/war-stable/2.332.3/jenkins.war"
+#    chdir: "{{jenkins_dir}}/war/"
+#  tags: jk_init
+
+- name: 分发war包
+  copy:
+    src: "{{software_dir}}/jenkins.war"
+    dest: "{{jenkins_dir}}/war/"
+    mode: "0777"
+  tags: jk_init
+
+- name: 分发配置文件
+  copy:
+    src: "start_jenkins_28869.sh"
+    dest: "{{jenkins_dir}}/cfg"
+    mode: "0777"
+  tags: jk_send
+
+- name: 分发service文件
+  copy:
+    src: "jenkins.service"
+    dest: "/usr/lib/systemd/system/"
+    mode: "0777"
+  tags: jk_send
+
+
+- name: 系统加载配置文件
+  shell: |
+    systemctl daemon-reload
+    systemctl stop jenkins.service
+    systemctl enable jenkins.service
+    systemctl start jenkins.service
+  tags: jk_start

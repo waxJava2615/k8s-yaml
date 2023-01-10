@@ -1,0 +1,440 @@
+---
+
+# 生成正式命令openssl req -x509 -newkey rsa:2048 -nodes -keyout gitlab.key -out gitlab.crt -days 36500  -subj "/C=CN/ST=shanghai/L=shanghai/O=example/OU=it/CN=gitlab.wax.com"
+
+- name: 创建文件存储
+  file:
+    path: "{{k8s_work_dir}}/yml/{{item}}"
+    state: directory
+    mode: "0777"
+  with_items:
+    - singleton-gitlab
+    - singleton-gitlab/sc
+    - singleton-gitlab/tls/ca
+    - singleton-gitlab/tls/server
+    - singleton-gitlab/tls/custom-registry
+    - singleton-gitlab/host-keys
+  tags: sl_gitlab_env,sl_gitlab_registry_conf,sl_gitlab_conf_install
+
+- name: 创建helm下载目录
+  file:
+    path: "{{helm_download_dir}}"
+    state: directory
+    mode: "0777"
+  tags: sl_gitlab_env
+
+- name: 创建命名空间devops
+  shell: |
+    /usr/bin/kubectl create ns devops
+  run_once: yes
+  ignore_errors: yes
+  tags: sl_gitlab_env
+
+- name: 分发yaml文件
+  copy:
+    src: "{{ item }}"
+    dest: "{{k8s_work_dir}}/yml/singleton-gitlab"
+    mode: "0777"
+  with_fileglob:
+    - "*secret*"
+  tags: sl_gitlab_env,sl_gitlab_conf_install
+
+- name: 分发sc-yaml文件
+  copy:
+    src: "{{ item }}"
+    dest: "{{k8s_work_dir}}/yml/singleton-gitlab/sc"
+    mode: "0777"
+  with_fileglob:
+    - "sc/*"
+  tags: sl_gitlab_env,sl_gitlab_conf_install
+
+- name: 分发ca证书
+  copy:
+    src: "{{item}}"
+    dest: "{{k8s_work_dir}}/yml/singleton-gitlab/tls/ca"
+    mode: "0777"
+  with_fileglob:
+    - "tls/ca/*"
+  tags: sl_gitlab_env,sl_gitlab_conf_install,sl_gitlab_ca
+
+- name: 分发server证书
+  copy:
+    src: "{{item}}"
+    dest: "{{k8s_work_dir}}/yml/singleton-gitlab/tls/server"
+    mode: "0777"
+  with_fileglob:
+    - "tls/server/*"
+  tags: sl_gitlab_env,sl_gitlab_conf_install,sl_gitlab_sv_tls
+
+- name: 分发custom-registry证书
+  copy:
+    src: "{{item}}"
+    dest: "{{k8s_work_dir}}/yml/singleton-gitlab/tls/custom-registry"
+    mode: "0777"
+  with_fileglob:
+    - "tls/custom-registry/*"
+  tags: sl_gitlab_env,sl_gitlab_conf_install
+
+- name: 添加helm的gitlab仓库
+  shell:
+    cmd: "helm repo add gitlab https://charts.gitlab.io/"
+    chdir: "{{helm_download_dir}}"
+  ignore_errors: yes
+  tags: sl_gitlab_env,sl_gitlab_conf_install
+
+- name: 下载gitlab镜像 6.2.2==>15.2.2
+  shell:
+    cmd: "helm pull gitlab/gitlab --version 6.2.2"
+    chdir: "{{helm_download_dir}}"
+  ignore_errors: yes
+  tags: sl_gitlab_env,sl_gitlab_conf_install
+
+- name: 解压gitlab镜像
+  shell:
+    cmd: "tar -zxvf gitlab-6.2.2.tgz"
+    chdir: "{{helm_download_dir}}"
+  ignore_errors: yes
+  tags: sl_gitlab_env,sl_gitlab_conf_install
+
+- name: 分发gitlab的helm配置文件
+  copy:
+    src: "helm/values.yaml"
+    dest: "{{helm_download_dir}}/gitlab"
+  tags: sl_gitlab_env,sl_gitlab_helm_conf,sl_gitlab_conf_install,sl_gitlab_update
+
+
+- name: 分发gitlab的子chart-minio配置持久卷
+  copy:
+    src: "helm/minio/values.yaml"
+    dest: "{{helm_download_dir}}/gitlab/charts/minio"
+  tags: sl_gitlab_env,sl_gitlab_helm_conf,sl_gitlab_conf_install
+
+
+- name: 分发host-keys
+  copy:
+    src: "{{ item }}"
+    dest: "{{k8s_work_dir}}/yml/singleton-gitlab/host-keys"
+  with_fileglob:
+    - "host-keys/*"
+  tags: sl_gitlab_env
+
+- name: 分发gitlab的子chart-sidekiq
+  copy:
+    src: "helm/sidekiq/values.yaml"
+    dest: "{{helm_download_dir}}/gitlab/charts/gitlab/charts/sidekiq"
+  tags: sl_gitlab_env,sl_gitlab_helm_conf,sl_gitlab_conf_install
+
+- name: 分发gitlab的子chart-sidekiq
+  copy:
+    src: "helm/webservice/values.yaml"
+    dest: "{{helm_download_dir}}/gitlab/charts/gitlab/charts/webservice"
+  tags: sl_gitlab_env,sl_gitlab_helm_conf,sl_gitlab_conf_install
+
+- name: 卸载redis的secret
+  shell:
+    cmd: "/usr/bin/kubectl -n devops delete secret singleton-redis-secret"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  ignore_errors: yes
+  run_once: yes
+  tags: sl_gitlab_secret
+
+
+- name: 创建redis的secret
+  shell:
+    cmd: "/usr/bin/kubectl create secret generic singleton-redis-secret --from-file=singleton-redis-secret -n devops "
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  tags: sl_gitlab_secret
+
+
+- name: 卸载email的secret
+  shell:
+    cmd: "/usr/bin/kubectl -n devops delete secret gitlab-email-secret"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  ignore_errors: yes
+  run_once: yes
+  tags: sl_gitlab_secret,sl_gitlab_email_secret
+
+
+- name: 创建 email 的secret
+  shell:
+    cmd: "/usr/bin/kubectl create secret generic gitlab-email-secret --from-file=gitlab-email-secret -n devops "
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  tags: sl_gitlab_secret,sl_gitlab_email_secret
+
+
+- name: 卸载pgsql的secret
+  shell:
+    cmd: "/usr/bin/kubectl -n devops delete secret singleton-pgsql-secret"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  ignore_errors: yes
+  run_once: yes
+  tags: sl_gitlab_secret
+
+
+- name: 创建pgsql的secret
+  shell:
+    cmd: "/usr/bin/kubectl create secret generic singleton-pgsql-secret --from-file=singleton-pgsql-secret -n devops "
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  tags: sl_gitlab_secret
+
+- name: 删除gitlab的tls
+  shell:
+    cmd: "/usr/bin/kubectl -n devops delete secret tls-gitlab"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab/tls/server"
+  ignore_errors: yes
+  run_once: yes
+  tags: sl_gitlab_tls,sl_gitlab_sv_tls
+
+- name: 安装gitlab的tls
+  shell:
+    cmd: "/usr/bin/kubectl create secret tls tls-gitlab --cert=gitlab.gitlab-wax.com.crt --key=gitlab.gitlab-wax.com.key -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab/tls/server"
+  run_once: yes
+  tags: sl_gitlab_tls,sl_gitlab_sv_tls
+
+
+- name: 删除gitlab-runner的cert
+  shell:
+    cmd: "/usr/bin/kubectl -n devops delete secret wax-com-gitlab-runner-cert"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab/tls/server"
+  ignore_errors: yes
+  run_once: yes
+  tags: sl_gitlab_tls,sl_gitlab_sv_tls
+
+- name: 安装gitlab的tls
+  shell:
+    cmd: "/usr/bin/kubectl create secret generic wax-com-gitlab-runner-cert  --from-file=gitlab.gitlab-wax.com.crt -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab/tls/server"
+  run_once: yes
+  tags: sl_gitlab_tls,sl_gitlab_sv_tls
+
+# https://docs.gitlab.cn/charts/installation/secrets.html#redis-%E5%AF%86%E7%A0%81
+# openssl req -new -newkey rsa:4096 -subj "/CN=*.wax.com" -nodes -x509 -keyout registry-gitlab-wax-com.key -out registry-gitlab-wax-com.crt
+# kubectl create secret generic gitlab-wax-registry-secret --from-file=registry-auth.key=registry-gitlab-wax-com.key --from-file=registry-auth.crt=registry-gitlab-wax-com.crt
+# 这个 secret 由 global.registry.certificate.secret 设置引用
+#  Secret 内容应该是一个配置项列表，即使它包含单个配置项。 如果内容只是一个字符串，chart 不会根据需要将其转换为列表。
+#  kubectl create secret generic registry-authorization-header --from-literal=value="[RandomFooBar]"
+#  默认情况下，secret 中使用的密钥是“值”。但是，用户可以使用不同的键，但必须确保在 header 映射项下将其指定为“键”。
+
+- name: 删除sc
+  shell:
+    cmd: "/usr/bin/kubectl delete -f ."
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab/sc"
+  run_once: yes
+  ignore_errors: yes
+  tags: sl_gitlab_sc
+
+- name: 部署sc
+  shell:
+    cmd: "/usr/bin/kubectl apply -f ."
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab/sc"
+  run_once: yes
+  ignore_errors: yes
+  tags: sl_gitlab_sc
+
+
+- name: 删除k8s中registry-tls
+  shell:
+    cmd: "/usr/bin/kubectl delete secret wax-com-registry-secret -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab/tls/custom-registry"
+  run_once: yes
+  ignore_errors: yes
+  tags: sl_gitlab_registry
+
+- name: 部署registry-tls到k8s中
+  shell:
+    cmd: "/usr/bin/kubectl create secret generic wax-com-registry-secret --from-file=registry-auth.key=registry-gitlab-issuer.key --from-file=registry-auth.crt=registry-gitlab-issue.crt -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab/tls/custom-registry"
+  run_once: yes
+  tags: sl_gitlab_registry
+
+
+- name: 删除k8s中host-keys
+  shell:
+    cmd: "/usr/bin/kubectl delete secret wax-com-gitlab-shell-host-keys -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  ignore_errors: yes
+  tags: sl_gitlab_hostkey
+
+- name: 部署host-keys到k8s中
+  shell:
+    cmd: "/usr/bin/kubectl create secret generic wax-com-gitlab-shell-host-keys --from-file host-keys -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  tags: sl_gitlab_hostkey
+
+
+- name: 删除k8s中wax-com-gitlab-shell-secret
+  shell:
+    cmd: "/usr/bin/kubectl delete secret wax-com-gitlab-shell-secret -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  ignore_errors: yes
+  tags: sl_gitlab_shell
+
+
+- name: 部署wax-com-gitlab-shell-secret到k8s中
+  shell:
+    cmd: "/usr/bin/kubectl create secret generic wax-com-gitlab-shell-secret --from-literal=secret=$(head -c 512 /dev/urandom | LC_CTYPE=C tr -cd 'a-zA-Z0-9' | head -c 64) -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  tags: sl_gitlab_shell
+
+- name: 删除k8s中wax-com-gitaly-secret
+  shell:
+    cmd: "/usr/bin/kubectl delete secret wax-com-gitaly-secret -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  ignore_errors: yes
+  tags: sl_gitlab_gitaly_secret
+
+- name: 部署wax-com-gitaly-secret到k8s中  global.gitaly.authToken.secret 设置引用
+  shell:
+    cmd: "/usr/bin/kubectl create secret generic wax-com-gitaly-secret --from-literal=token=$(head -c 512 /dev/urandom | LC_CTYPE=C tr -cd 'a-zA-Z0-9' | head -c 64) -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  tags: sl_gitlab_gitaly_secret
+
+
+- name: 删除k8s中wax-com-praefect-secret
+  shell:
+    cmd: "/usr/bin/kubectl delete secret wax-com-praefect-secret -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  ignore_errors: yes
+  tags: sl_gitlab_praefect_secret
+
+
+- name: 部署wax-com-praefect-secret到k8s中 global.praefect.authToken.secret 设置引用
+  shell:
+    cmd: "/usr/bin/kubectl create secret generic wax-com-praefect-secret --from-literal=token=$(head -c 512 /dev/urandom | LC_CTYPE=C tr -cd 'a-zA-Z0-9' | head -c 64) -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  tags: sl_gitlab_praefect_secret
+
+
+- name: 删除gitlab rails secret
+  shell:
+    cmd: "/usr/bin/kubectl delete secret wax-com-gitlab-rails-secret -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  ignore_errors: yes
+  tags: sl_gitlab_rails_secret
+
+
+- name: 部署gitlab rails secret  global.railsSecrets.secret 设置引用
+  shell:
+    cmd: "/usr/bin/kubectl create secret generic wax-com-gitlab-rails-secret --from-file=secrets.yml -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  tags: sl_gitlab_rails_secret
+
+
+- name: 删除gitlab workhorse secret
+  shell:
+    cmd: "/usr/bin/kubectl delete secret wax-com-gitlab-workhorse-secret -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  ignore_errors: yes
+  tags: sl_gitlab_workhorse_secret
+
+- name: 部署gitlab workhorse secret global.workhorse.secret 设置引用
+  shell:
+    cmd: "/usr/bin/kubectl create secret generic wax-com-gitlab-workhorse-secret --from-literal=shared_secret=$(head -c 512 /dev/urandom | LC_CTYPE=C tr -cd 'a-zA-Z0-9' | head -c 32 | base64) -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  tags: sl_gitlab_workhorse_secret
+
+- name: 删除gitlab runner secret
+  shell:
+    cmd: "/usr/bin/kubectl delete secret wax-com-gitlab-runner-secret -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  ignore_errors: yes
+  tags: sl_gitlab_runner_secret
+
+- name: 部署gitlab runner secret
+  shell:
+    cmd: "/usr/bin/kubectl  create secret generic wax-com-gitlab-runner-secret --from-literal=runner-registration-token=$(head -c 512 /dev/urandom | LC_CTYPE=C tr -cd 'a-zA-Z0-9' | head -c 64) -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  tags: sl_gitlab_runner_secret
+
+- name: 删除gitlab kas secret
+  shell:
+    cmd: "/usr/bin/kubectl delete secret wax-com-gitlab-kas-secret -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  ignore_errors: yes
+  tags: sl_gitlab_kas_secret
+
+- name: 部署gitlab kas secret
+  shell:
+    cmd: "/usr/bin/kubectl create secret generic wax-com-gitlab-kas-secret --from-literal=kas_shared_secret=$(head -c 512 /dev/urandom | LC_CTYPE=C tr -cd 'a-zA-Z0-9' | head -c 32 | base64) -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  tags: sl_gitlab_kas_secret
+
+
+- name: 删除gitlab kas api secret
+  shell:
+    cmd: "/usr/bin/kubectl delete secret wax-com-kas-private-api -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  ignore_errors: yes
+  tags: sl_gitlab_kas_api_secret
+
+- name: 部署gitlab kas api secret
+  shell:
+    cmd: "/usr/bin/kubectl create secret generic wax-com-kas-private-api --from-literal=kas_private_api_secret=$(head -c 512 /dev/urandom | LC_CTYPE=C tr -cd 'a-zA-Z0-9' | head -c 32 | base64) -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  tags: sl_gitlab_kas_api_secret
+
+
+- name: 删除gitlab minio secret
+  shell:
+    cmd: "/usr/bin/kubectl delete secret wax-com-minio-secret -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  ignore_errors: yes
+  tags: sl_gitlab_minio_secret
+
+
+- name: 部署gitlab minio secret
+  shell:
+    cmd: "/usr/bin/kubectl create secret generic wax-com-minio-secret --from-literal=accesskey=$(head -c 512 /dev/urandom | LC_CTYPE=C tr -cd 'a-zA-Z0-9' | head -c 20) --from-literal=secretkey=$(head -c 512 /dev/urandom | LC_CTYPE=C tr -cd 'a-zA-Z0-9' | head -c 64) -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  tags: sl_gitlab_minio_secret
+
+- name: 删除GitLab Pages secret
+  shell:
+    cmd: "/usr/bin/kubectl delete secret wax-com-gitlab-pages-secret -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  ignore_errors: yes
+  tags: sl_gitlab_pages_secret
+
+- name: 部署GitLab Pages secret
+  shell:
+    cmd: "/usr/bin/kubectl create secret generic wax-com-gitlab-pages-secret --from-literal=shared_secret=$(head -c 512 /dev/urandom | LC_CTYPE=C tr -cd 'a-zA-Z0-9' | head -c 32 | base64) -n devops"
+    chdir: "{{k8s_work_dir}}/yml/singleton-gitlab"
+  run_once: yes
+  tags: sl_gitlab_pages_secret
+
+- name: 将gitlab使用helm命令安装到k8s中
+  shell:
+    cmd: "sleep 10 && /usr/local/bin/helm install -n devops gitlab . --debug"
+    chdir: "{{helm_download_dir}}/gitlab"
+  run_once: yes
+  register: sl_gitlab_install_res
+  tags: sl_gitlab_install,sl_gitlab_conf_install
+#- debug: var=sl_gitlab_install_res
+#  tags: sl_gitlab_install
+
+

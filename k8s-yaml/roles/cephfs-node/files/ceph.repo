@@ -1,0 +1,12 @@
+[noarch]
+name=noarch
+baseurl=https://mirrors.aliyun.com/ceph/rpm-nautilus/el7/noarch/
+enabled=1
+gpgcheck=0
+
+
+[x86_64]
+name=x86_64
+baseurl=https://mirrors.aliyun.com/ceph/rpm-nautilus/el7/x86_64/
+enabled=1
+gpgcheck=0
